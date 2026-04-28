@@ -361,6 +361,7 @@ const ownedTables = {
   customers: "freight_customers_owned",
   suppliers: "freight_suppliers_owned",
   ports: "freight_ports_owned",
+  backups: "freight_backups_owned",
 };
 
 function getOwnedItemId(item, fallbackPrefix = "ITEM") {
@@ -411,11 +412,7 @@ function readOwnedRows(result, normalizer = (x) => x) {
 }
 
 export default function App() {
-  const [shipments, setShipments] = useState(() => {
-    const saved = localStorage.getItem("freight_shipments");
-    const rows = saved ? JSON.parse(saved) : defaultShipments;
-    return rows.map(normalizeShipment);
-  });
+  const [shipments, setShipments] = useState([]);
 
   const [fxSettings, setFxSettings] = useState(() => {
     const saved = localStorage.getItem("freight_fx_settings");
@@ -423,28 +420,22 @@ export default function App() {
   });
 
 
-  const [customers, setCustomers] = useState(() => {
-    const saved = localStorage.getItem("freight_customers");
-    return saved ? JSON.parse(saved) : defaultCustomers;
-  });
+  const [customers, setCustomers] = useState([]);
 
-  const [suppliers, setSuppliers] = useState(() => {
-    const saved = localStorage.getItem("freight_suppliers");
-    if (!saved) return defaultSuppliers;
-    const savedRows = JSON.parse(saved);
-    const savedNames = new Set(savedRows.map((s) => s.name));
-    return [...savedRows, ...defaultSuppliers.filter((s) => !savedNames.has(s.name))];
-  });
+  const [suppliers, setSuppliers] = useState(defaultSuppliers);
 
-  const [ports, setPorts] = useState(() => {
-    const saved = localStorage.getItem("freight_ports");
-    if (!saved) return defaultWorldPorts;
-    const savedRows = JSON.parse(saved);
-    const savedCodes = new Set(savedRows.map((p) => p.code));
-    return [...savedRows, ...defaultWorldPorts.filter((p) => !savedCodes.has(p.code))];
-  });
+  const [ports, setPorts] = useState(defaultWorldPorts);
 
   const [query, setQuery] = useState("");
+  const [shipmentFilters, setShipmentFilters] = useState({
+    customer: "all",
+    line: "all",
+    pol: "all",
+    pod: "all",
+    status: "all",
+    cargoType: "all",
+    paymentStatus: "all",
+  });
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [lineFilter, setLineFilter] = useState("all");
@@ -458,6 +449,7 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState("Saved automatically");
   const [fxLoading, setFxLoading] = useState(false);
   const [customerForm, setCustomerForm] = useState(emptyCustomerForm);
+  const [editingCustomerId, setEditingCustomerId] = useState(null);
   const [supplierForm, setSupplierForm] = useState(emptySupplierForm);
   const [portForm, setPortForm] = useState(emptyPortForm);
   const [onlineDataLoaded, setOnlineDataLoaded] = useState(false);
@@ -469,25 +461,25 @@ export default function App() {
   const activeFxRate = Number(fxSettings.mode === "auto" ? fxSettings.autoRate : fxSettings.manualRate) || 1;
 
   useEffect(() => {
-    localStorage.setItem("freight_shipments", JSON.stringify(shipments));
+    if (user?.id) localStorage.setItem(`freight_shipments_${user.id}`, JSON.stringify(shipments));
     setSaveStatus(onlineDataLoaded ? "Saved online" : "Saved locally");
-  }, [shipments, onlineDataLoaded]);
+  }, [shipments, onlineDataLoaded, user?.id]);
 
   useEffect(() => {
     localStorage.setItem("freight_fx_settings", JSON.stringify(fxSettings));
   }, [fxSettings]);
 
   useEffect(() => {
-    localStorage.setItem("freight_customers", JSON.stringify(customers));
-  }, [customers]);
+    if (user?.id) localStorage.setItem(`freight_customers_${user.id}`, JSON.stringify(customers));
+  }, [customers, user?.id]);
 
   useEffect(() => {
-    localStorage.setItem("freight_suppliers", JSON.stringify(suppliers));
-  }, [suppliers]);
+    if (user?.id) localStorage.setItem(`freight_suppliers_${user.id}`, JSON.stringify(suppliers));
+  }, [suppliers, user?.id]);
 
   useEffect(() => {
-    localStorage.setItem("freight_ports", JSON.stringify(ports));
-  }, [ports]);
+    if (user?.id) localStorage.setItem(`freight_ports_${user.id}`, JSON.stringify(ports));
+  }, [ports, user?.id]);
 
   async function loadOwnedData(ownerId) {
     setSaveStatus("Loading online data...");
@@ -507,16 +499,22 @@ export default function App() {
       const onlinePorts = readOwnedRows(portsResult);
 
       if (onlineShipments.length) setShipments(onlineShipments);
-      else await saveOwnedRows(ownedTables.shipments, ownerId, shipments.map(normalizeShipment), "SHP");
+      else setShipments([]);
 
       if (onlineCustomers.length) setCustomers(onlineCustomers);
-      else await saveOwnedRows(ownedTables.customers, ownerId, customers, "CUS");
+      else setCustomers([]);
 
       if (onlineSuppliers.length) setSuppliers(onlineSuppliers);
-      else await saveOwnedRows(ownedTables.suppliers, ownerId, suppliers, "SUP");
+      else {
+        setSuppliers(defaultSuppliers);
+        await saveOwnedRows(ownedTables.suppliers, ownerId, defaultSuppliers, "SUP");
+      }
 
       if (onlinePorts.length) setPorts(onlinePorts);
-      else await saveOwnedRows(ownedTables.ports, ownerId, ports.map((p) => ({ ...p, id: p.code })), "PORT");
+      else {
+        setPorts(defaultWorldPorts);
+        await saveOwnedRows(ownedTables.ports, ownerId, defaultWorldPorts.map((p) => ({ ...p, id: p.code })), "PORT");
+      }
 
       setOnlineDataLoaded(true);
       setSaveStatus("Saved online");
@@ -534,6 +532,10 @@ export default function App() {
       setUser(currentUser);
 
       if (currentUser) {
+        setShipments([]);
+        setCustomers([]);
+        setSuppliers(defaultSuppliers);
+        setPorts(defaultWorldPorts);
         const { data: profileData } = await supabase
           .from("profiles")
           .select("*")
@@ -570,12 +572,41 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [shipments, customers, suppliers, ports, user?.id, onlineDataLoaded]);
 
+  function updateShipmentFilter(field, value) {
+    setShipmentFilters((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function resetShipmentFilters() {
+    setQuery("");
+    setLineFilter("all");
+    setShipmentFilters({
+      customer: "all",
+      line: "all",
+      pol: "all",
+      pod: "all",
+      status: "all",
+      cargoType: "all",
+      paymentStatus: "all",
+    });
+  }
+
   const filtered = useMemo(() => {
     return shipments.filter((s) => {
-      const text = `${s.id} ${s.customer} ${s.line} ${s.pol} ${s.pod} ${s.bookingNo} ${s.vessel}`.toLowerCase();
-      return text.includes(query.toLowerCase()) && (lineFilter === "all" || s.line === lineFilter);
+      const text = `${s.id} ${s.customer} ${s.line} ${s.pol} ${s.pod} ${s.bookingNo} ${s.vessel} ${s.status} ${s.paymentStatus}`.toLowerCase();
+      const matchesSearch = text.includes(query.toLowerCase());
+      const matchesLegacyLine = lineFilter === "all" || s.line === lineFilter;
+      const matchesFilters =
+        (shipmentFilters.customer === "all" || s.customer === shipmentFilters.customer) &&
+        (shipmentFilters.line === "all" || s.line === shipmentFilters.line) &&
+        (shipmentFilters.pol === "all" || s.pol === shipmentFilters.pol) &&
+        (shipmentFilters.pod === "all" || s.pod === shipmentFilters.pod) &&
+        (shipmentFilters.status === "all" || s.status === shipmentFilters.status) &&
+        (shipmentFilters.cargoType === "all" || s.cargoType === shipmentFilters.cargoType) &&
+        (shipmentFilters.paymentStatus === "all" || s.paymentStatus === shipmentFilters.paymentStatus);
+
+      return matchesSearch && matchesLegacyLine && matchesFilters;
     });
-  }, [shipments, query, lineFilter]);
+  }, [shipments, query, lineFilter, shipmentFilters]);
 
   const totals = useMemo(() => {
     return shipments.reduce(
@@ -633,7 +664,29 @@ export default function App() {
       alert("Please enter customer name.");
       return;
     }
-    setCustomers((prev) => [{ id: getNextCustomerId(), ...customerForm }, ...prev]);
+
+    if (editingCustomerId) {
+      setCustomers((prev) =>
+        prev.map((customer) =>
+          customer.id === editingCustomerId ? { ...customer, ...customerForm, id: editingCustomerId } : customer
+        )
+      );
+      setEditingCustomerId(null);
+    } else {
+      setCustomers((prev) => [{ id: getNextCustomerId(), ...customerForm }, ...prev]);
+    }
+
+    setCustomerForm(emptyCustomerForm);
+  }
+
+  function startEditCustomer(customer) {
+    setEditingCustomerId(customer.id);
+    setCustomerForm({ ...emptyCustomerForm, ...customer });
+    setTab("customers");
+  }
+
+  function cancelEditCustomer() {
+    setEditingCustomerId(null);
     setCustomerForm(emptyCustomerForm);
   }
 
@@ -783,6 +836,10 @@ export default function App() {
 
   function addExpenseToShipment(e) {
     e.preventDefault();
+    if (!canEditCore) {
+      alert("You do not have permission to add expenses.");
+      return;
+    }
     if (!expenseForm.shipmentId || !expenseForm.amountUsd) {
       alert("Please select shipment and enter expense amount.");
       return;
@@ -823,6 +880,10 @@ export default function App() {
   }
 
   function deleteExpense(shipmentId, index) {
+    if (!canEditCore) {
+      alert("You do not have permission to delete expenses.");
+      return;
+    }
     if (!confirm("Delete this expense?")) return;
     setShipments((prev) =>
       prev.map((s) => {
@@ -839,9 +900,58 @@ export default function App() {
     setTab("dashboard");
   }
 
-  function applyExchangeRateToAllShipments() {
-    if (!confirm(`Apply ${activeFxRate} TRY/USD to all shipments?`)) return;
-    setShipments((prev) => prev.map((s) => normalizeShipment({ ...s, fx: activeFxRate })));
+  async function createBackup(manual = false) {
+    if (!user?.id) return;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const backupPayload = {
+      createdAt: new Date().toISOString(),
+      shipments,
+      customers,
+      suppliers,
+      ports,
+      fxSettings,
+    };
+
+    try {
+      const { error } = await supabase.from(ownedTables.backups).upsert(
+        [{
+          owner_id: user.id,
+          backup_date: today,
+          data: backupPayload,
+          updated_at: new Date().toISOString(),
+        }],
+        { onConflict: "owner_id,backup_date" }
+      );
+
+      if (error) throw error;
+      localStorage.setItem(`freight_last_backup_${user.id}`, today);
+      setSaveStatus(manual ? "Backup saved today" : "Daily backup saved");
+      if (manual) alert("Backup saved successfully.");
+    } catch (error) {
+      console.error("Backup failed:", error);
+      if (manual) alert("Backup failed. Please check Supabase backup table setup.");
+    }
+  }
+
+  useEffect(() => {
+    if (!user?.id || !onlineDataLoaded) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const lastBackup = localStorage.getItem(`freight_last_backup_${user.id}`);
+    if (lastBackup !== today) createBackup(false);
+  }, [user?.id, onlineDataLoaded]);
+
+  async function signOut() {
+    await supabase.auth.signOut();
+    setUser(null);
+    setProfile(null);
+    setShipments([]);
+    setCustomers([]);
+    setSuppliers(defaultSuppliers);
+    setPorts(defaultWorldPorts);
+    setOnlineDataLoaded(false);
+    setSelectedShipment(null);
+    setTab("dashboard");
   }
 
   async function updateAutoRate() {
@@ -905,6 +1015,7 @@ export default function App() {
             <span>✅ Arrived {totals.arrived}</span>
           </div>
         )}
+        <button className="logoutBtn" onClick={signOut}>Logout</button>
       </aside>
 
       <main className="main">
@@ -1043,15 +1154,20 @@ export default function App() {
                 <h2>Shipment List</h2>
                 <p>Search and filter all shipment records.</p>
               </div>
-              <div className="filters">
-                <input placeholder="Search..." value={query} onChange={(e) => setQuery(e.target.value)} />
-                <select value={lineFilter} onChange={(e) => setLineFilter(e.target.value)}>
-                  <option value="all">All Lines</option>
-                  {suppliers.map((supplier) => (
-                    <option key={supplier.id} value={supplier.name}>{supplier.name}</option>
-                  ))}
-                </select>
+              <div className="actions">
+                <button className="ghostBtn" onClick={resetShipmentFilters}>Clear Filters</button>
               </div>
+            </div>
+
+            <div className="filtersGrid">
+              <FormField label="Search"><input placeholder="Shipment, customer, vessel..." value={query} onChange={(e) => setQuery(e.target.value)} /></FormField>
+              <FormField label="Customer"><CustomerSelect value={shipmentFilters.customer} customers={[{ id: "all", name: "all" }, ...customers]} onChange={(value) => updateShipmentFilter("customer", value)} /></FormField>
+              <FormField label="Company / Line"><select value={shipmentFilters.line} onChange={(e) => { updateShipmentFilter("line", e.target.value); setLineFilter(e.target.value); }}><option value="all">All Lines</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.name}>{supplier.name}</option>)}</select></FormField>
+              <FormField label="POL"><PortSelect value={shipmentFilters.pol} ports={[{ code: "all", name: "All Ports", country: "" }, ...ports]} onChange={(value) => updateShipmentFilter("pol", value)} /></FormField>
+              <FormField label="POD"><PortSelect value={shipmentFilters.pod} ports={[{ code: "all", name: "All Ports", country: "" }, ...ports]} onChange={(value) => updateShipmentFilter("pod", value)} /></FormField>
+              <FormField label="Status"><select value={shipmentFilters.status} onChange={(e) => updateShipmentFilter("status", e.target.value)}><option value="all">All Statuses</option><option value="Draft">Draft</option><option value="Booked">Booked</option><option value="Loading">Loading</option><option value="In Transit">In Transit</option><option value="At Sea">At Sea</option><option value="At Port">At Port</option><option value="Arrived">Arrived</option><option value="Completed">Completed</option></select></FormField>
+              <FormField label="Cargo Type"><select value={shipmentFilters.cargoType} onChange={(e) => updateShipmentFilter("cargoType", e.target.value)}><option value="all">All Types</option><option value="FCL">FCL</option><option value="LCL">LCL</option><option value="Road">Road</option><option value="Air">Air</option><option value="Cross">Cross</option></select></FormField>
+              <FormField label="Payment"><select value={shipmentFilters.paymentStatus} onChange={(e) => updateShipmentFilter("paymentStatus", e.target.value)}><option value="all">All Payments</option><option value="Unpaid">Unpaid</option><option value="Partially Paid">Partially Paid</option><option value="Fully Paid">Fully Paid</option></select></FormField>
             </div>
 
             <div className="tableWrap">
@@ -1164,7 +1280,7 @@ export default function App() {
                 <button className="saveBtn" type="submit">Add Expense</button>
               </form>
             </div>
-            <ExpenseList shipments={shipments} deleteExpense={deleteExpense} />
+            <ExpenseList shipments={shipments} deleteExpense={deleteExpense} canEditCore={canEditCore} />
           </section>
         )}
 
@@ -1204,9 +1320,8 @@ export default function App() {
             </div>
 
             <div className="note mt">
-              <h3>Apply Rate to Shipments</h3>
-              <p>All new bookings use the active rate automatically. Existing shipments can also be updated in one click.</p>
-              <button className="saveBtn" onClick={applyExchangeRateToAllShipments}>Apply Active Rate to All Shipments</button>
+              <h3>Important FX Rule</h3>
+              <p>The active exchange rate is used for new bookings only. Old shipments keep their own rate to protect historical profit accuracy.</p>
             </div>
           </section>
         )}
@@ -1226,7 +1341,10 @@ export default function App() {
                     <FormField label="Country"><input value={customerForm.country} onChange={(e) => updateCustomer("country", e.target.value)} /></FormField>
                     <FormField label="Note"><input value={customerForm.note} onChange={(e) => updateCustomer("note", e.target.value)} /></FormField>
                   </div>
-                  <button className="saveBtn mt" type="submit">Add Customer</button>
+                  <div className="actions mt">
+                    <button className="saveBtn" type="submit">{editingCustomerId ? "Save Customer" : "Add Customer"}</button>
+                    {editingCustomerId && <button className="ghostBtn" type="button" onClick={cancelEditCustomer}>Cancel</button>}
+                  </div>
                 </form>
               )}
             </div>
@@ -1239,7 +1357,12 @@ export default function App() {
                     <p>{customer.contact || "No contact"} {customer.phone ? `• ${customer.phone}` : ""}</p>
                     <p>{customer.email || "No email"} {customer.country ? `• ${customer.country}` : ""}</p>
                     {customer.note && <p>{customer.note}</p>}
-                    {role === "admin" && <button className="dangerBtn" onClick={() => deleteCustomer(customer.id)}>Delete</button>}
+                    {canEditCore && (
+                      <div className="actions mt">
+                        <button className="ghostBtn" onClick={() => startEditCustomer(customer)}>Edit</button>
+                        {role === "admin" && <button className="dangerBtn" onClick={() => deleteCustomer(customer.id)}>Delete</button>}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1333,7 +1456,10 @@ export default function App() {
             <p>Gross profit: {canSeeFinance ? money(totals.grossProfit) : "—"}</p>
             <p>Total expenses: {canSeeFinance ? money(totals.expenses) : "—"}</p>
             <p>Net profit: {canSeeFinance ? money(totals.netProfit) : "—"}</p>
-            {role === "admin" && <button className="dangerBtn" onClick={resetDemoData}>Reset Demo Data</button>}
+            <div className="actions mt">
+              {canSeeFinance && <button className="saveBtn" onClick={() => createBackup(true)}>Create Manual Backup</button>}
+              {role === "admin" && <button className="dangerBtn" onClick={resetDemoData}>Reset Demo Data</button>}
+            </div>
           </section>
         )}
 
@@ -1531,7 +1657,7 @@ function TransportList({ shipments, deleteTransport, canSeeFinance }) {
   );
 }
 
-function ExpenseList({ shipments, deleteExpense }) {
+function ExpenseList({ shipments, deleteExpense, canEditCore }) {
   return (
     <div className="note">
       <h3>Expenses by Shipment</h3>
@@ -1543,7 +1669,7 @@ function ExpenseList({ shipments, deleteExpense }) {
             {getExpenses(s).map((e, index) => (
               <div className="transportLine" key={`${s.id}-expense-${index}`}>
                 <span>{e.type}: {e.description || "No description"} - {money(e.amountUsd)}</span>
-                <button className="dangerBtn" onClick={() => deleteExpense(s.id, index)}>Delete</button>
+                {canEditCore && <button className="dangerBtn" onClick={() => deleteExpense(s.id, index)}>Delete</button>}
               </div>
             ))}
           </div>
