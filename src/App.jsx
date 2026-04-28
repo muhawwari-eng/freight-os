@@ -338,6 +338,27 @@ function getProgress(shipment) {
   return 10;
 }
 
+function getShipmentReportDate(shipment) {
+  return shipment?.createdAt || shipment?.eta || shipment?.etd || shipment?.cutOff || "";
+}
+
+function getMonthKey(dateValue) {
+  if (!dateValue) return "";
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 7);
+}
+
+function getCurrentMonthKey() {
+  return new Date().toISOString().slice(0, 7);
+}
+
+function formatMonthLabel(monthKey) {
+  if (!monthKey) return "All dates";
+  const [year, month] = monthKey.split("-");
+  return month + "/" + year;
+}
+
 function getDaysLeft(dateValue) {
   if (!dateValue) return null;
   const today = new Date();
@@ -389,6 +410,7 @@ function dedupeShipments(rows) {
 function normalizeShipment(shipment) {
   return {
     ...shipment,
+    createdAt: shipment.createdAt || shipment.created_at || shipment.eta || shipment.etd || shipment.cutOff || new Date().toISOString(),
     cargoType: shipment.cargoType || "FCL",
     bookingNo: shipment.bookingNo || "Not set",
     vessel: shipment.vessel || "Not set",
@@ -498,6 +520,7 @@ export default function App() {
   const [supplierForm, setSupplierForm] = useState(emptySupplierForm);
   const [portForm, setPortForm] = useState(emptyPortForm);
   const [onlineDataLoaded, setOnlineDataLoaded] = useState(false);
+  const [reportMonth, setReportMonth] = useState(getCurrentMonthKey());
 
   const role = profile?.role || "viewer";
   const canSeeFinance = role === "admin" || role === "partner";
@@ -674,6 +697,51 @@ export default function App() {
     );
   }, [shipments, activeFxRate]);
 
+  const reportData = useMemo(() => {
+    const monthShipments = shipments.filter((s) => getMonthKey(getShipmentReportDate(s)) === reportMonth);
+
+    const summary = monthShipments.reduce(
+      (acc, s) => {
+        acc.shipments += 1;
+        acc.containers += Number(s.qty || 0);
+        acc.revenue += calcOceanSell(s);
+        acc.costs += calcTotalCostUsd(s, activeFxRate);
+        acc.grossProfit += calcGrossProfit(s, activeFxRate);
+        acc.expenses += calcExpensesUsd(s);
+        acc.netProfit += calcNetProfit(s, activeFxRate);
+        return acc;
+      },
+      { shipments: 0, containers: 0, revenue: 0, costs: 0, grossProfit: 0, expenses: 0, netProfit: 0 }
+    );
+
+    const customersMap = new Map();
+    const expenseCompaniesMap = new Map();
+
+    monthShipments.forEach((s) => {
+      const customerKey = s.customer || "Unknown Customer";
+      const customerRow = customersMap.get(customerKey) || { name: customerKey, shipments: 0, revenue: 0, netProfit: 0 };
+      customerRow.shipments += 1;
+      customerRow.revenue += calcOceanSell(s);
+      customerRow.netProfit += calcNetProfit(s, activeFxRate);
+      customersMap.set(customerKey, customerRow);
+
+      getExpenses(s).forEach((expense) => {
+        const companyKey = expense.company || "Not set";
+        const companyRow = expenseCompaniesMap.get(companyKey) || { company: companyKey, count: 0, amountUsd: 0 };
+        companyRow.count += 1;
+        companyRow.amountUsd += Number(expense.amountUsd || 0);
+        expenseCompaniesMap.set(companyKey, companyRow);
+      });
+    });
+
+    return {
+      shipments: monthShipments,
+      summary,
+      customers: Array.from(customersMap.values()).sort((a, b) => b.netProfit - a.netProfit),
+      expenseCompanies: Array.from(expenseCompaniesMap.values()).sort((a, b) => b.amountUsd - a.amountUsd),
+    };
+  }, [shipments, reportMonth, activeFxRate]);
+
   function updateBooking(field, value) {
     setBookingForm((prev) => ({ ...prev, [field]: value }));
   }
@@ -833,6 +901,7 @@ function addShipmentFromForm(e) {
 
     const newShipment = normalizeShipment({
       id: getNextShipmentId(shipments),
+      createdAt: new Date().toISOString(),
       customer: bookingForm.customer,
       line: bookingForm.line,
       pol: bookingForm.pol,
@@ -1570,12 +1639,92 @@ function importLocalBackup(event) {
 
         {tab === "reports" && (
           <section className="panel">
-            <h2>Reports</h2>
-            <p>Total revenue / customer sales only: {canSeeFinance ? money(totals.revenue) : "—"}</p>
-            <p>Total costs (buy + local transport + expenses): {canSeeFinance ? money(totals.costs) : "—"}</p>
-            <p>Gross profit: {canSeeFinance ? money(totals.grossProfit) : "—"}</p>
-            <p>Total expenses: {canSeeFinance ? money(totals.expenses) : "—"}</p>
-            <p>Net profit: {canSeeFinance ? money(totals.netProfit) : "—"}</p>
+            <div className="panelHead">
+              <div>
+                <h2>Monthly Reports</h2>
+                <p>Reports are based on the shipment creation date. Old shipments use ETA / ETD / Cut-Off as fallback.</p>
+              </div>
+              <div className="actions">
+                <FormField label="Report Month">
+                  <input type="month" value={reportMonth} onChange={(e) => setReportMonth(e.target.value)} />
+                </FormField>
+              </div>
+            </div>
+
+            <h3>{formatMonthLabel(reportMonth)} Summary</h3>
+            <section className="stats">
+              <Card icon="📋" title="Shipments" value={reportData.summary.shipments} />
+              <Card icon="📦" title="Units / Containers" value={reportData.summary.containers} />
+              <Card icon="💵" title="Revenue" value={canSeeFinance ? money(reportData.summary.revenue) : "—"} />
+              <Card icon="✅" title="Net Profit" value={canSeeFinance ? money(reportData.summary.netProfit) : "—"} />
+            </section>
+
+            {canSeeFinance && (
+              <div className="detailGrid">
+                <p><b>Total Costs:</b> {money(reportData.summary.costs)}</p>
+                <p><b>Gross Profit:</b> {money(reportData.summary.grossProfit)}</p>
+                <p><b>Total Expenses:</b> {money(reportData.summary.expenses)}</p>
+                <p><b>Net Profit:</b> {money(reportData.summary.netProfit)}</p>
+              </div>
+            )}
+
+            <div className="twoCols mt">
+              <div className="note">
+                <h3>Profit by Customer</h3>
+                {reportData.customers.length === 0 && <p>No customer data for this month.</p>}
+                {reportData.customers.map((row) => (
+                  <div className="transportLine" key={row.name}>
+                    <span>{row.name} — {row.shipments} shipments</span>
+                    <b>{canSeeFinance ? money(row.netProfit) : "—"}</b>
+                  </div>
+                ))}
+              </div>
+
+              <div className="note">
+                <h3>Expenses by Company</h3>
+                {reportData.expenseCompanies.length === 0 && <p>No expenses for this month.</p>}
+                {reportData.expenseCompanies.map((row) => (
+                  <div className="transportLine" key={row.company}>
+                    <span>{row.company} — {row.count} expenses</span>
+                    <b>{money(row.amountUsd)}</b>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="tableWrap mt">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Created</th>
+                    <th>Shipment</th>
+                    <th>Customer</th>
+                    <th>Company</th>
+                    <th>Route</th>
+                    <th>Status</th>
+                    {canSeeFinance && <th>Revenue</th>}
+                    {canSeeFinance && <th>Costs</th>}
+                    {canSeeFinance && <th>Net</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportData.shipments.map((s) => (
+                    <tr key={s.id} onClick={() => openShipmentDetails(s)}>
+                      <td>{getShipmentReportDate(s) ? new Date(getShipmentReportDate(s)).toISOString().slice(0, 10) : "Not set"}</td>
+                      <td>{s.id}</td>
+                      <td>{s.customer}</td>
+                      <td>{s.line}</td>
+                      <td>{s.pol} → {s.pod}</td>
+                      <td><span className="badge">{s.status}</span></td>
+                      {canSeeFinance && <td>{money(calcOceanSell(s))}</td>}
+                      {canSeeFinance && <td>{money(calcTotalCostUsd(s, activeFxRate))}</td>}
+                      {canSeeFinance && <td><b>{money(calcNetProfit(s, activeFxRate))}</b></td>}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
             <div className="actions mt">
               {canSeeFinance && <button className="saveBtn" onClick={() => createBackup(true)}>Create Manual Backup</button>}
               <button className="ghostBtn" onClick={downloadLocalBackup}>Download Local Backup</button>
