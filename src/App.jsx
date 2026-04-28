@@ -362,6 +362,35 @@ function formatMonthLabel(monthKey) {
   return month + "/" + year;
 }
 
+function dateOnly(dateValue) {
+  if (!dateValue) return "";
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+}
+
+function isDateInRange(dateValue, fromDate, toDate) {
+  const day = dateOnly(dateValue);
+  if (!day) return false;
+  if (fromDate && day < fromDate) return false;
+  if (toDate && day > toDate) return false;
+  return true;
+}
+
+function getDateRangeLabel(fromDate, toDate) {
+  if (fromDate && toDate) return `${fromDate} to ${toDate}`;
+  if (fromDate) return `From ${fromDate}`;
+  if (toDate) return `Until ${toDate}`;
+  return "All dates";
+}
+
+function safeFileName(value) {
+  return String(value || "all")
+    .replace(/[^a-z0-9]+/gi, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase() || "all";
+}
+
 function getDaysLeft(dateValue) {
   if (!dateValue) return null;
   const today = new Date();
@@ -523,7 +552,8 @@ export default function App() {
   const [supplierForm, setSupplierForm] = useState(emptySupplierForm);
   const [portForm, setPortForm] = useState(emptyPortForm);
   const [onlineDataLoaded, setOnlineDataLoaded] = useState(false);
-  const [reportMonth, setReportMonth] = useState(getCurrentMonthKey());
+  const [reportFromDate, setReportFromDate] = useState("");
+  const [reportToDate, setReportToDate] = useState("");
   const [clientReportCustomer, setClientReportCustomer] = useState("all");
 
   const role = profile?.role || "viewer";
@@ -702,9 +732,9 @@ export default function App() {
   }, [shipments, activeFxRate]);
 
   const reportData = useMemo(() => {
-    const monthShipments = shipments.filter((s) => getMonthKey(getShipmentReportDate(s)) === reportMonth);
+    const selectedShipments = shipments.filter((s) => isDateInRange(getShipmentReportDate(s), reportFromDate, reportToDate));
 
-    const summary = monthShipments.reduce(
+    const summary = selectedShipments.reduce(
       (acc, s) => {
         acc.shipments += 1;
         acc.containers += Number(s.qty || 0);
@@ -721,7 +751,7 @@ export default function App() {
     const customersMap = new Map();
     const expenseCompaniesMap = new Map();
 
-    monthShipments.forEach((s) => {
+    selectedShipments.forEach((s) => {
       const customerKey = s.customer || "Unknown Customer";
       const customerRow = customersMap.get(customerKey) || { name: customerKey, shipments: 0, revenue: 0, netProfit: 0 };
       customerRow.shipments += 1;
@@ -739,13 +769,12 @@ export default function App() {
     });
 
     return {
-      shipments: monthShipments,
+      shipments: selectedShipments,
       summary,
       customers: Array.from(customersMap.values()).sort((a, b) => b.netProfit - a.netProfit),
       expenseCompanies: Array.from(expenseCompaniesMap.values()).sort((a, b) => b.amountUsd - a.amountUsd),
     };
-  }, [shipments, reportMonth, activeFxRate]);
-
+  }, [shipments, reportFromDate, reportToDate, activeFxRate]);
 
   function reportShipmentRows(rows = reportData.shipments) {
     return rows.map((s) => ({
@@ -798,10 +827,10 @@ export default function App() {
     }));
   }
 
-  function exportMonthlyReportExcel() {
+  function exportDetailedReportExcel() {
     const wb = XLSX.utils.book_new();
     const summaryRows = [
-      { Metric: "Month", Value: formatMonthLabel(reportMonth) },
+      { Metric: "Date Range", Value: getDateRangeLabel(reportFromDate, reportToDate) },
       { Metric: "Shipments", Value: reportData.summary.shipments },
       { Metric: "Units / Containers", Value: reportData.summary.containers },
       { Metric: "Revenue USD", Value: Number(reportData.summary.revenue.toFixed(2)) },
@@ -825,15 +854,15 @@ export default function App() {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(reportShipmentRows()), "Shipments");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(customerRows), "Profit by Customer");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(expenseRows), "Expenses by Company");
-    XLSX.writeFile(wb, `freight-os-monthly-report-${reportMonth || "all"}.xlsx`);
+    XLSX.writeFile(wb, `freight-os-detailed-report-${safeFileName(getDateRangeLabel(reportFromDate, reportToDate))}.xlsx`);
   }
 
-  function exportMonthlyReportPdf() {
+  function exportDetailedReportPdf() {
     const doc = new jsPDF({ orientation: "landscape" });
     doc.setFontSize(16);
-    doc.text("Freight OS - Detailed Monthly Report", 14, 16);
+    doc.text("Freight OS - Detailed Report", 14, 16);
     doc.setFontSize(10);
-    doc.text(`Month: ${formatMonthLabel(reportMonth)} | Exported: ${new Date().toLocaleString()}`, 14, 24);
+    doc.text(`Date Range: ${getDateRangeLabel(reportFromDate, reportToDate)} | Exported: ${new Date().toLocaleString()}`, 14, 24);
     autoTable(doc, {
       startY: 30,
       head: [["Shipments", "Units", "Revenue", "Costs", "Gross", "Expenses", "Net"]],
@@ -864,7 +893,7 @@ export default function App() {
       styles: { fontSize: 8 },
       headStyles: { fontSize: 8 },
     });
-    doc.save(`freight-os-monthly-report-${reportMonth || "all"}.pdf`);
+    doc.save(`freight-os-detailed-report-${safeFileName(getDateRangeLabel(reportFromDate, reportToDate))}.pdf`);
   }
 
   function getClientReportShipments() {
@@ -874,27 +903,27 @@ export default function App() {
   function exportClientReportExcel() {
     const rows = customerShipmentRows(getClientReportShipments());
     if (!rows.length) {
-      alert("No shipments found for this client and month.");
+      alert("No shipments found for this client and selected date range.");
       return;
     }
     const customerName = clientReportCustomer === "all" ? "All Customers" : clientReportCustomer;
     const summary = [
       { Metric: "Customer", Value: customerName },
-      { Metric: "Month", Value: formatMonthLabel(reportMonth) },
+      { Metric: "Date Range", Value: getDateRangeLabel(reportFromDate, reportToDate) },
       { Metric: "Shipments", Value: rows.length },
       { Metric: "Total Customer Amount USD", Value: rows.reduce((sum, r) => sum + Number(r["Customer Amount USD"] || 0), 0) },
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), "Summary");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Client Shipments");
-    const safeName = customerName.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
-    XLSX.writeFile(wb, `freight-os-client-report-${safeName}-${reportMonth || "all"}.xlsx`);
+    const safeName = safeFileName(customerName);
+    XLSX.writeFile(wb, `freight-os-client-report-${safeName}-${safeFileName(getDateRangeLabel(reportFromDate, reportToDate))}.xlsx`);
   }
 
   function exportClientReportPdf() {
     const rows = getClientReportShipments();
     if (!rows.length) {
-      alert("No shipments found for this client and month.");
+      alert("No shipments found for this client and selected date range.");
       return;
     }
     const customerName = clientReportCustomer === "all" ? "All Customers" : clientReportCustomer;
@@ -902,7 +931,7 @@ export default function App() {
     doc.setFontSize(16);
     doc.text(`Shipment Report - ${customerName}`, 14, 16);
     doc.setFontSize(10);
-    doc.text(`Month: ${formatMonthLabel(reportMonth)} | Exported: ${new Date().toLocaleString()}`, 14, 24);
+    doc.text(`Date Range: ${getDateRangeLabel(reportFromDate, reportToDate)} | Exported: ${new Date().toLocaleString()}`, 14, 24);
     autoTable(doc, {
       startY: 30,
       head: [["Date", "Shipment", "Carrier", "Route", "Cargo", "Qty", "Booking", "Vessel", "Cut-Off", "ETD", "ETA", "Status", "Payment", "Amount"]],
@@ -925,8 +954,8 @@ export default function App() {
       styles: { fontSize: 7 },
       headStyles: { fontSize: 7 },
     });
-    const safeName = customerName.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
-    doc.save(`freight-os-client-report-${safeName}-${reportMonth || "all"}.pdf`);
+    const safeName = safeFileName(customerName);
+    doc.save(`freight-os-client-report-${safeName}-${safeFileName(getDateRangeLabel(reportFromDate, reportToDate))}.pdf`);
   }
 
   function updateBooking(field, value) {
@@ -1828,19 +1857,23 @@ function importLocalBackup(event) {
           <section className="panel">
             <div className="panelHead">
               <div>
-                <h2>Monthly Reports</h2>
-                <p>Reports are based on the shipment creation date. Old shipments use ETA / ETD / Cut-Off as fallback.</p>
+                <h2>Detailed Reports</h2>
+                <p>Reports are based on the shipment creation date. Select From / To dates, or leave them empty for all dates. Old shipments use ETA / ETD / Cut-Off as fallback.</p>
               </div>
               <div className="actions">
-                <FormField label="Report Month">
-                  <input type="month" value={reportMonth} onChange={(e) => setReportMonth(e.target.value)} />
+                <FormField label="From Date">
+                  <input type="date" value={reportFromDate} onChange={(e) => setReportFromDate(e.target.value)} />
                 </FormField>
-                {canSeeFinance && <button className="saveBtn" onClick={exportMonthlyReportExcel}>Export Monthly Excel</button>}
-                {canSeeFinance && <button className="ghostBtn" onClick={exportMonthlyReportPdf}>Export Monthly PDF</button>}
+                <FormField label="To Date">
+                  <input type="date" value={reportToDate} onChange={(e) => setReportToDate(e.target.value)} />
+                </FormField>
+                <button className="ghostBtn" onClick={() => { setReportFromDate(""); setReportToDate(""); }}>All Dates</button>
+                {canSeeFinance && <button className="saveBtn" onClick={exportDetailedReportExcel}>Export Detailed Excel</button>}
+                {canSeeFinance && <button className="ghostBtn" onClick={exportDetailedReportPdf}>Export Detailed PDF</button>}
               </div>
             </div>
 
-            <h3>{formatMonthLabel(reportMonth)} Summary</h3>
+            <h3>{getDateRangeLabel(reportFromDate, reportToDate)} Summary</h3>
             <section className="stats">
               <Card icon="📋" title="Shipments" value={reportData.summary.shipments} />
               <Card icon="📦" title="Units / Containers" value={reportData.summary.containers} />
@@ -1860,7 +1893,7 @@ function importLocalBackup(event) {
             <div className="twoCols mt">
               <div className="note">
                 <h3>Profit by Customer</h3>
-                {reportData.customers.length === 0 && <p>No customer data for this month.</p>}
+                {reportData.customers.length === 0 && <p>No customer data for this date range.</p>}
                 {reportData.customers.map((row) => (
                   <div className="transportLine" key={row.name}>
                     <span>{row.name} — {row.shipments} shipments</span>
@@ -1871,7 +1904,7 @@ function importLocalBackup(event) {
 
               <div className="note">
                 <h3>Expenses by Company</h3>
-                {reportData.expenseCompanies.length === 0 && <p>No expenses for this month.</p>}
+                {reportData.expenseCompanies.length === 0 && <p>No expenses for this date range.</p>}
                 {reportData.expenseCompanies.map((row) => (
                   <div className="transportLine" key={row.company}>
                     <span>{row.company} — {row.count} expenses</span>
