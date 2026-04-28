@@ -674,6 +674,50 @@ export default function App() {
     );
   }, [shipments, activeFxRate]);
 
+  const dashboardTasks = useMemo(() => {
+    const tasks = [];
+
+    shipments.forEach((s) => {
+      const status = String(s.status || "").toLowerCase();
+      const isClosed = status.includes("arrived") || status.includes("completed");
+      const cutOffDays = getDaysLeft(s.cutOff);
+      const etdDays = getDaysLeft(s.etd);
+      const etaDays = getDaysLeft(s.eta);
+      const margin = calcMargin(s, activeFxRate);
+
+      if (!isClosed && cutOffDays !== null && cutOffDays <= 3) {
+        tasks.push({ id: `${s.id}-cutoff`, type: "Cut-Off Alert", shipmentId: s.id, customer: s.customer, description: cutOffDays < 0 ? "Cut-off date passed — check SI/docs immediately" : "SI / documentation cut-off is close", dueDate: s.cutOff, priority: cutOffDays <= 1 ? "URGENT" : "HIGH", status: "Pending", score: cutOffDays });
+      }
+
+      if (!isClosed && etdDays !== null && etdDays <= 1) {
+        tasks.push({ id: `${s.id}-loading`, type: "Loading Confirmation", shipmentId: s.id, customer: s.customer, description: etdDays < 0 ? "ETD passed — update shipment status" : "Confirm loading and truck/container status", dueDate: s.etd, priority: "URGENT", status: "Pending", score: etdDays });
+      }
+
+      if (!isClosed && etaDays !== null && etaDays < 0) {
+        tasks.push({ id: `${s.id}-eta`, type: "Arrival Follow-up", shipmentId: s.id, customer: s.customer, description: "ETA passed — confirm arrival / update status", dueDate: s.eta, priority: "HIGH", status: "Pending", score: etaDays });
+      }
+
+      if (canSeeFinance && String(s.paymentStatus || "").toLowerCase().includes("unpaid")) {
+        tasks.push({ id: `${s.id}-payment`, type: "Payment Follow-up", shipmentId: s.id, customer: s.customer, description: "Shipment still has unpaid financial status", dueDate: s.eta || s.etd || s.cutOff || "Not set", priority: "HIGH", status: "Pending", score: 20 });
+      }
+
+      if (canSeeFinance && calcOceanSell(s) > 0 && margin < 10) {
+        tasks.push({ id: `${s.id}-margin`, type: "Low Margin", shipmentId: s.id, customer: s.customer, description: "Margin is below 10% — review costs/selling price", dueDate: "Review", priority: "HIGH", status: "Pending", score: 30 });
+      }
+    });
+
+    return tasks.sort((a, b) => {
+      const priorityOrder = { URGENT: 0, HIGH: 1, NORMAL: 2 };
+      return (priorityOrder[a.priority] ?? 9) - (priorityOrder[b.priority] ?? 9) || a.score - b.score;
+    });
+  }, [shipments, activeFxRate, canSeeFinance]);
+
+  const activeDashboardShipments = useMemo(() => {
+    return [...shipments]
+      .filter((s) => !String(s.status || "").toLowerCase().includes("completed"))
+      .sort((a, b) => (getDaysLeft(a.cutOff) ?? 9999) - (getDaysLeft(b.cutOff) ?? 9999));
+  }, [shipments]);
+
   function updateBooking(field, value) {
     setBookingForm((prev) => ({ ...prev, [field]: value }));
   }
@@ -1150,18 +1194,23 @@ function importLocalBackup(event) {
             <section className="stats">
               <Card icon="📋" title="Total Shipments" value={totals.shipments} />
               <Card icon="🟦" title="FCL Containers" value={totals.fcl} />
-              <Card icon="🟨" title="LCL Shipments" value={totals.lcl} />
+              <Card icon="🚨" title="Urgent / High Tasks" value={dashboardTasks.length} />
               <Card icon="💵" title="Net Profit After Expenses" value={canSeeFinance ? money(totals.netProfit) : "—"} />
             </section>
 
             <section className="dashboardGrid">
               <div className="panel">
-                <h2>🚢 Active Shipments</h2>
-                <div className="stackList">
-                  {shipments.map((s) => (
-                    <ShipmentCard key={s.id} shipment={s} exchangeRate={activeFxRate} canSeeFinance={canSeeFinance} onOpen={() => openShipmentDetails(s)} />
-                  ))}
+                <div className="panelHead">
+                  <div>
+                    <h2>🚨 Today Actions</h2>
+                    <p>Cut-off, loading, payment and margin alerts generated from active shipments.</p>
+                  </div>
+                  <span className="badge">{dashboardTasks.filter((task) => task.priority === "URGENT").length} urgent</span>
                 </div>
+                <DashboardTasks tasks={dashboardTasks.slice(0, 8)} onOpenShipment={(shipmentId) => {
+                  const shipment = shipments.find((s) => s.id === shipmentId);
+                  if (shipment) openShipmentDetails(shipment);
+                }} />
               </div>
 
               {canSeeFinance && (
@@ -1174,6 +1223,38 @@ function importLocalBackup(event) {
                   </div>
                 </div>
               )}
+            </section>
+
+            <section className="panel">
+              <div className="panelHead">
+                <div>
+                  <h2>🚢 Active Shipments List</h2>
+                  <p>Operational table for quick follow-up, similar to a control tower view.</p>
+                </div>
+                <button className="ghostBtn" onClick={() => setTab("shipments")}>Open Full Table</button>
+              </div>
+              <DashboardShipmentsTable shipments={activeDashboardShipments.slice(0, 8)} exchangeRate={activeFxRate} canSeeFinance={canSeeFinance} onOpen={openShipmentDetails} />
+            </section>
+
+            <section className="dashboardGrid">
+              <div className="panel">
+                <h2>🚢 Shipment Cards</h2>
+                <div className="stackList">
+                  {activeDashboardShipments.map((s) => (
+                    <ShipmentCard key={s.id} shipment={s} exchangeRate={activeFxRate} canSeeFinance={canSeeFinance} onOpen={() => openShipmentDetails(s)} />
+                  ))}
+                </div>
+              </div>
+
+              <div className="panel">
+                <h2>📌 Operations Snapshot</h2>
+                <div className="miniList">
+                  <div className="miniCard"><b>Unpaid Shipments</b><p>{totals.unpaid} shipments need payment follow-up</p></div>
+                  <div className="miniCard"><b>At Sea / In Transit</b><p>{totals.atSea} shipments currently moving</p></div>
+                  <div className="miniCard"><b>Arrived</b><p>{totals.arrived} shipments reached destination</p></div>
+                  <div className="miniCard"><b>Total Revenue</b><p>{canSeeFinance ? money(totals.revenue) : "Hidden by role"}</p></div>
+                </div>
+              </div>
             </section>
           </>
         )}
@@ -1755,6 +1836,57 @@ function ProfitCard({ shipment, exchangeRate }) {
       <p>Sale: {money(calcOceanSell(shipment))} | Cost: {money(calcTotalCostUsd(shipment, exchangeRate))} | Margin: {margin.toFixed(1)}%</p>
       <strong>{money(calcNetProfit(shipment, exchangeRate))}</strong>
       <div className="progress"><div style={{ width: `${Math.min(Math.max(margin, 3), 100)}%` }} /></div>
+    </div>
+  );
+}
+
+function DashboardTasks({ tasks, onOpenShipment }) {
+  if (!tasks.length) return <div className="note">✅ No urgent or high-priority actions right now.</div>;
+  return (
+    <div className="tableWrap">
+      <table>
+        <thead><tr><th>Task</th><th>Customer</th><th>Description</th><th>Due</th><th>Priority</th><th>Status</th><th>Shipment</th></tr></thead>
+        <tbody>
+          {tasks.map((task) => (
+            <tr key={task.id} onClick={() => onOpenShipment(task.shipmentId)}>
+              <td><span className="typeBadge">{task.type}</span></td>
+              <td>{task.customer}</td>
+              <td>{task.description}</td>
+              <td>{task.dueDate}</td>
+              <td><span className="paymentBadge">{task.priority}</span></td>
+              <td><span className="badge">{task.status}</span></td>
+              <td>{task.shipmentId}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function DashboardShipmentsTable({ shipments, exchangeRate, canSeeFinance, onOpen }) {
+  if (!shipments.length) return <div className="note">No active shipments to display.</div>;
+  return (
+    <div className="tableWrap">
+      <table>
+        <thead><tr><th>Shipment</th><th>Client</th><th>Vessel</th><th>POL</th><th>POD</th><th>Cut-Off</th><th>ETD</th><th>ETA</th><th>Status</th>{canSeeFinance && <th>Net Profit</th>}</tr></thead>
+        <tbody>
+          {shipments.map((s) => (
+            <tr key={s.id} onClick={() => onOpen(s)}>
+              <td>{s.id}</td>
+              <td>{s.customer}</td>
+              <td>{s.vessel || s.line || "Not set"}</td>
+              <td>{s.pol || "Not set"}</td>
+              <td>{s.pod || "Not set"}</td>
+              <td>{s.cutOff || "Not set"}</td>
+              <td>{s.etd || "Not set"}</td>
+              <td>{s.eta || "Not set"}</td>
+              <td><span className="badge">{s.status}</span></td>
+              {canSeeFinance && <td><b>{money(calcNetProfit(s, exchangeRate))}</b></td>}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
