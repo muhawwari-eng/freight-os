@@ -338,7 +338,41 @@ function getDaysLeft(dateValue) {
 }
 
 function getNextShipmentId(shipments) {
-  return `SHP-2026-${String(shipments.length + 1).padStart(3, "0")}`;
+  const year = new Date().getFullYear();
+  const numbers = (shipments || [])
+    .map((s) => {
+      const match = String(s?.id || "").match(/^SHP-\d{4}-(\d+)$/);
+      return match ? Number(match[1]) : 0;
+    })
+    .filter((n) => Number.isFinite(n) && n > 0);
+
+  const next = numbers.length ? Math.max(...numbers) + 1 : 1;
+  return `SHP-${year}-${String(next).padStart(3, "0")}`;
+}
+
+function dedupeShipments(rows) {
+  const used = new Set();
+  let maxNumber = 0;
+
+  (rows || []).forEach((row) => {
+    const match = String(row?.id || "").match(/^SHP-\d{4}-(\d+)$/);
+    if (match) maxNumber = Math.max(maxNumber, Number(match[1]) || 0);
+  });
+
+  return (rows || []).map((row) => {
+    const normalized = normalizeShipment(row);
+    let id = String(normalized.id || "").trim();
+
+    if (!id || used.has(id)) {
+      do {
+        maxNumber += 1;
+        id = `SHP-${new Date().getFullYear()}-${String(maxNumber).padStart(3, "0")}`;
+      } while (used.has(id));
+    }
+
+    used.add(id);
+    return { ...normalized, id };
+  });
 }
 
 function normalizeShipment(shipment) {
@@ -498,7 +532,7 @@ export default function App() {
       const onlineSuppliers = readOwnedRows(suppliersResult);
       const onlinePorts = readOwnedRows(portsResult);
 
-      if (onlineShipments.length) setShipments(onlineShipments);
+      if (onlineShipments.length) setShipments(dedupeShipments(onlineShipments));
       else setShipments([]);
 
       if (onlineCustomers.length) setCustomers(onlineCustomers);
@@ -557,7 +591,7 @@ export default function App() {
     const timer = setTimeout(async () => {
       try {
         await Promise.all([
-          saveOwnedRows(ownedTables.shipments, user.id, shipments.map(normalizeShipment), "SHP"),
+          saveOwnedRows(ownedTables.shipments, user.id, dedupeShipments(shipments), "SHP"),
           saveOwnedRows(ownedTables.customers, user.id, customers, "CUS"),
           saveOwnedRows(ownedTables.suppliers, user.id, suppliers, "SUP"),
           saveOwnedRows(ownedTables.ports, user.id, ports.map((p) => ({ ...p, id: p.code })), "PORT"),
@@ -757,25 +791,29 @@ export default function App() {
     setIsEditing(true);
   }
 
-  function saveEditShipment(e) {
-    e.preventDefault();
-    const updatedShipment = normalizeShipment({
-      ...selectedShipment,
-      ...editForm,
-      qty: Number(editForm.qty || 0),
-      buyUsd: Number(editForm.buyUsd || 0),
-      sellUsd: Number(editForm.sellUsd || 0),
-      fx: activeFxRate,
-      bookingNo: editForm.bookingNo || "Not set",
-      vessel: editForm.vessel || "Not set",
-    });
+function saveEditShipment(e) {
+  e.preventDefault();
+  if (!selectedShipment?.id) return;
 
-    setShipments((prev) => prev.map((s) => (s.id === updatedShipment.id ? updatedShipment : s)));
-    setSelectedShipment(updatedShipment);
-    setIsEditing(false);
-  }
+  const updatedShipment = normalizeShipment({
+    ...selectedShipment,
+    ...editForm,
+    id: selectedShipment.id, // Never change shipment ID during editing.
+    qty: Number(editForm.qty || 0),
+    buyUsd: Number(editForm.buyUsd || 0),
+    sellUsd: Number(editForm.sellUsd || 0),
+    bookingNo: editForm.bookingNo || "Not set",
+    vessel: editForm.vessel || "Not set",
+  });
 
-  function addShipmentFromForm(e) {
+  setShipments((prev) =>
+    dedupeShipments(prev.map((s) => (s.id === selectedShipment.id ? updatedShipment : s)))
+  );
+  setSelectedShipment(updatedShipment);
+  setIsEditing(false);
+}
+
+function addShipmentFromForm(e) {
     e.preventDefault();
     if (!bookingForm.customer || !bookingForm.line || !bookingForm.pol || !bookingForm.pod || !bookingForm.qty || !bookingForm.buyUsd || !bookingForm.sellUsd) {
       alert("Please fill customer, line, route, quantity, buy price, and sell price.");
@@ -805,7 +843,7 @@ export default function App() {
       expenses: [],
     });
 
-    setShipments((prev) => [newShipment, ...prev]);
+    setShipments((prev) => dedupeShipments([newShipment, ...prev]));
     setBookingForm(emptyBookingForm);
     setTab("shipments");
   }
@@ -895,7 +933,7 @@ export default function App() {
 
   function resetDemoData() {
     if (!confirm("Reset all data to demo shipments?")) return;
-    setShipments(defaultShipments.map(normalizeShipment));
+    setShipments(dedupeShipments(defaultShipments));
     setSelectedShipment(null);
     setTab("dashboard");
   }
@@ -933,6 +971,31 @@ export default function App() {
       if (manual) alert("Backup failed. Please check Supabase backup table setup.");
     }
   }
+
+function downloadLocalBackup() {
+  const backupPayload = {
+    app: "Freight OS",
+    exportedAt: new Date().toISOString(),
+    userEmail: user?.email || "unknown",
+    shipments: dedupeShipments(shipments),
+    customers,
+    suppliers,
+    ports,
+    fxSettings,
+  };
+
+  const blob = new Blob([JSON.stringify(backupPayload, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `freight-os-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
 
   useEffect(() => {
     if (!user?.id || !onlineDataLoaded) return;
@@ -1015,6 +1078,7 @@ export default function App() {
             <span>✅ Arrived {totals.arrived}</span>
           </div>
         )}
+        <button className="ghostBtn" onClick={downloadLocalBackup}>Download Local Backup</button>
         <button className="logoutBtn" onClick={signOut}>Logout</button>
       </aside>
 
@@ -1458,6 +1522,7 @@ export default function App() {
             <p>Net profit: {canSeeFinance ? money(totals.netProfit) : "—"}</p>
             <div className="actions mt">
               {canSeeFinance && <button className="saveBtn" onClick={() => createBackup(true)}>Create Manual Backup</button>}
+              <button className="ghostBtn" onClick={downloadLocalBackup}>Download Local Backup</button>
               {role === "admin" && <button className="dangerBtn" onClick={resetDemoData}>Reset Demo Data</button>}
             </div>
           </section>
