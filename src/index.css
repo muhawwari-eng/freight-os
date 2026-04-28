@@ -35,7 +35,23 @@ button {
   border-right: 1px solid rgba(56, 189, 248, 0.22);
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 18px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(56, 189, 248, 0.45) transparent;
+}
+
+.sidebar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background: rgba(56, 189, 248, 0.35);
+  border-radius: 999px;
+}
+
+.sidebar::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .brand {
@@ -90,11 +106,11 @@ button {
 }
 
 .sidebarSummary {
-  margin-top: auto;
   background: rgba(14, 165, 233, 0.12);
   border: 1px solid rgba(56, 189, 248, 0.28);
   border-radius: 20px;
   padding: 18px;
+  flex-shrink: 0;
 }
 
 .sidebarSummary h4 {
@@ -471,6 +487,8 @@ button:disabled {
   background: rgba(239, 68, 68, 0.14);
   color: #fecaca;
   border: 1px solid rgba(239, 68, 68, 0.28);
+  flex-shrink: 0;
+  width: 100%;
 }
 
 .logoutBtn:hover {
