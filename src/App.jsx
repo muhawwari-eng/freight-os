@@ -1,4 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import Login from "./Login";
 import { supabase } from "./supabase";
 
@@ -521,6 +524,7 @@ export default function App() {
   const [portForm, setPortForm] = useState(emptyPortForm);
   const [onlineDataLoaded, setOnlineDataLoaded] = useState(false);
   const [reportMonth, setReportMonth] = useState(getCurrentMonthKey());
+  const [clientReportCustomer, setClientReportCustomer] = useState("all");
 
   const role = profile?.role || "viewer";
   const canSeeFinance = role === "admin" || role === "partner";
@@ -742,214 +746,187 @@ export default function App() {
     };
   }, [shipments, reportMonth, activeFxRate]);
 
-  function getDetailedReportRows() {
-    return reportData.shipments.map((s) => {
-      const transportTry = calcTransportTry(s);
-      const expensesUsd = calcExpensesUsd(s);
-      const costsUsd = calcTotalCostUsd(s, activeFxRate);
-      const grossProfit = calcGrossProfit(s, activeFxRate);
-      const netProfit = calcNetProfit(s, activeFxRate);
-      const rate = getRate(s, activeFxRate);
 
-      return {
-        created: getShipmentReportDate(s) ? new Date(getShipmentReportDate(s)).toISOString().slice(0, 10) : "Not set",
-        shipment: s.id || "",
-        customer: s.customer || "",
-        company: s.line || "",
-        pol: s.pol || "",
-        pod: s.pod || "",
-        route: `${s.pol || ""} → ${s.pod || ""}`,
-        cargoType: s.cargoType || "",
-        containerType: s.containerType || "",
-        qty: Number(s.qty || 0),
-        status: s.status || "",
-        paymentStatus: s.paymentStatus || "",
-        bookingNo: s.bookingNo || "",
-        vessel: s.vessel || "",
-        cutOff: s.cutOff || "",
-        etd: s.etd || "",
-        eta: s.eta || "",
-        fx: rate,
-        buyUsd: calcOceanBuy(s),
-        sellUsd: calcOceanSell(s),
-        transportTry,
-        expensesUsd,
-        costsUsd,
-        grossProfit,
-        netProfit,
-        margin: calcMargin(s, activeFxRate),
-        transports: getTransports(s),
-        expenses: getExpenses(s),
-      };
-    });
+  function reportShipmentRows(rows = reportData.shipments) {
+    return rows.map((s) => ({
+      Date: getShipmentReportDate(s) ? new Date(getShipmentReportDate(s)).toISOString().slice(0, 10) : "Not set",
+      "Shipment ID": s.id,
+      Customer: s.customer || "",
+      Company: s.line || "",
+      POL: s.pol || "",
+      POD: s.pod || "",
+      Route: `${s.pol || ""} → ${s.pod || ""}`,
+      "Cargo Type": s.cargoType || "",
+      "Container Type": s.containerType || "",
+      Quantity: Number(s.qty || 0),
+      "Booking No": s.bookingNo || "Not set",
+      Vessel: s.vessel || "Not set",
+      "Cut-Off": s.cutOff || "",
+      ETD: s.etd || "",
+      ETA: s.eta || "",
+      Status: s.status || "",
+      Payment: s.paymentStatus || "",
+      "Revenue USD": Number(calcOceanSell(s).toFixed(2)),
+      "Costs USD": Number(calcTotalCostUsd(s, activeFxRate).toFixed(2)),
+      "Gross Profit USD": Number(calcGrossProfit(s, activeFxRate).toFixed(2)),
+      "Expenses USD": Number(calcExpensesUsd(s).toFixed(2)),
+      "Net Profit USD": Number(calcNetProfit(s, activeFxRate).toFixed(2)),
+      "FX Rate": Number(getRate(s, activeFxRate).toFixed(4)),
+    }));
+  }
+
+  function customerShipmentRows(rows) {
+    return rows.map((s) => ({
+      Date: getShipmentReportDate(s) ? new Date(getShipmentReportDate(s)).toISOString().slice(0, 10) : "Not set",
+      "Shipment ID": s.id,
+      Customer: s.customer || "",
+      Carrier: s.line || "",
+      POL: s.pol || "",
+      POD: s.pod || "",
+      Route: `${s.pol || ""} → ${s.pod || ""}`,
+      "Cargo Type": s.cargoType || "",
+      "Container Type": s.containerType || "",
+      Quantity: Number(s.qty || 0),
+      "Booking No": s.bookingNo || "Not set",
+      Vessel: s.vessel || "Not set",
+      "Cut-Off": s.cutOff || "",
+      ETD: s.etd || "",
+      ETA: s.eta || "",
+      Status: s.status || "",
+      Payment: s.paymentStatus || "",
+      "Customer Amount USD": Number(calcOceanSell(s).toFixed(2)),
+    }));
   }
 
   function exportMonthlyReportExcel() {
-    if (!canSeeFinance) {
-      alert("You do not have permission to export financial reports.");
-      return;
-    }
-
-    const rows = getDetailedReportRows();
-    const headers = [
-      "Created", "Shipment", "Customer", "Company", "POL", "POD", "Cargo Type", "Container Type", "Qty",
-      "Status", "Payment", "Booking No", "Vessel", "Cut-Off", "ETD", "ETA", "FX",
-      "Buy USD", "Sell USD", "Transport TRY", "Expenses USD", "Total Cost USD", "Gross Profit USD", "Net Profit USD", "Margin %"
-    ];
-
-    const escapeCsv = (value) => {
-      const text = String(value ?? "");
-      return `"${text.replace(/"/g, '""')}"`;
-    };
-
+    const wb = XLSX.utils.book_new();
     const summaryRows = [
-      ["Freight OS Detailed Monthly Report"],
-      ["Month", formatMonthLabel(reportMonth)],
-      ["Shipments", reportData.summary.shipments],
-      ["Containers / Units", reportData.summary.containers],
-      ["Revenue USD", reportData.summary.revenue],
-      ["Total Costs USD", reportData.summary.costs],
-      ["Gross Profit USD", reportData.summary.grossProfit],
-      ["Expenses USD", reportData.summary.expenses],
-      ["Net Profit USD", reportData.summary.netProfit],
-      [],
+      { Metric: "Month", Value: formatMonthLabel(reportMonth) },
+      { Metric: "Shipments", Value: reportData.summary.shipments },
+      { Metric: "Units / Containers", Value: reportData.summary.containers },
+      { Metric: "Revenue USD", Value: Number(reportData.summary.revenue.toFixed(2)) },
+      { Metric: "Total Costs USD", Value: Number(reportData.summary.costs.toFixed(2)) },
+      { Metric: "Gross Profit USD", Value: Number(reportData.summary.grossProfit.toFixed(2)) },
+      { Metric: "Total Expenses USD", Value: Number(reportData.summary.expenses.toFixed(2)) },
+      { Metric: "Net Profit USD", Value: Number(reportData.summary.netProfit.toFixed(2)) },
     ];
-
-    const shipmentRows = rows.map((row) => [
-      row.created, row.shipment, row.customer, row.company, row.pol, row.pod, row.cargoType, row.containerType, row.qty,
-      row.status, row.paymentStatus, row.bookingNo, row.vessel, row.cutOff, row.etd, row.eta, row.fx,
-      row.buyUsd, row.sellUsd, row.transportTry, row.expensesUsd, row.costsUsd, row.grossProfit, row.netProfit, row.margin.toFixed(2),
-    ]);
-
-    const customerRows = [
-      [],
-      ["Profit by Customer"],
-      ["Customer", "Shipments", "Revenue USD", "Net Profit USD"],
-      ...reportData.customers.map((row) => [row.name, row.shipments, row.revenue, row.netProfit]),
-    ];
-
-    const expenseRows = [
-      [],
-      ["Expenses by Company"],
-      ["Company", "Expense Count", "Amount USD"],
-      ...reportData.expenseCompanies.map((row) => [row.company, row.count, row.amountUsd]),
-    ];
-
-    const csvContent = [
-      ...summaryRows,
-      headers,
-      ...shipmentRows,
-      ...customerRows,
-      ...expenseRows,
-    ].map((row) => row.map(escapeCsv).join(",")).join("\n");
-
-    const blob = new Blob(["\ufeff" + csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `freight-os-detailed-report-${reportMonth || "all"}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+    const customerRows = reportData.customers.map((row) => ({
+      Customer: row.name,
+      Shipments: row.shipments,
+      "Revenue USD": Number(row.revenue.toFixed(2)),
+      "Net Profit USD": Number(row.netProfit.toFixed(2)),
+    }));
+    const expenseRows = reportData.expenseCompanies.map((row) => ({
+      Company: row.company,
+      "Expense Count": row.count,
+      "Amount USD": Number(row.amountUsd.toFixed(2)),
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), "Summary");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(reportShipmentRows()), "Shipments");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(customerRows), "Profit by Customer");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(expenseRows), "Expenses by Company");
+    XLSX.writeFile(wb, `freight-os-monthly-report-${reportMonth || "all"}.xlsx`);
   }
 
   function exportMonthlyReportPdf() {
-    if (!canSeeFinance) {
-      alert("You do not have permission to export financial reports.");
+    const doc = new jsPDF({ orientation: "landscape" });
+    doc.setFontSize(16);
+    doc.text("Freight OS - Detailed Monthly Report", 14, 16);
+    doc.setFontSize(10);
+    doc.text(`Month: ${formatMonthLabel(reportMonth)} | Exported: ${new Date().toLocaleString()}`, 14, 24);
+    autoTable(doc, {
+      startY: 30,
+      head: [["Shipments", "Units", "Revenue", "Costs", "Gross", "Expenses", "Net"]],
+      body: [[
+        reportData.summary.shipments,
+        reportData.summary.containers,
+        money(reportData.summary.revenue),
+        money(reportData.summary.costs),
+        money(reportData.summary.grossProfit),
+        money(reportData.summary.expenses),
+        money(reportData.summary.netProfit),
+      ]],
+    });
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 8,
+      head: [["Date", "Shipment", "Customer", "Company", "Route", "Status", "Revenue", "Costs", "Net"]],
+      body: reportData.shipments.map((s) => [
+        getShipmentReportDate(s) ? new Date(getShipmentReportDate(s)).toISOString().slice(0, 10) : "Not set",
+        s.id,
+        s.customer,
+        s.line,
+        `${s.pol} → ${s.pod}`,
+        s.status,
+        money(calcOceanSell(s)),
+        money(calcTotalCostUsd(s, activeFxRate)),
+        money(calcNetProfit(s, activeFxRate)),
+      ]),
+      styles: { fontSize: 8 },
+      headStyles: { fontSize: 8 },
+    });
+    doc.save(`freight-os-monthly-report-${reportMonth || "all"}.pdf`);
+  }
+
+  function getClientReportShipments() {
+    return reportData.shipments.filter((s) => clientReportCustomer === "all" || s.customer === clientReportCustomer);
+  }
+
+  function exportClientReportExcel() {
+    const rows = customerShipmentRows(getClientReportShipments());
+    if (!rows.length) {
+      alert("No shipments found for this client and month.");
       return;
     }
+    const customerName = clientReportCustomer === "all" ? "All Customers" : clientReportCustomer;
+    const summary = [
+      { Metric: "Customer", Value: customerName },
+      { Metric: "Month", Value: formatMonthLabel(reportMonth) },
+      { Metric: "Shipments", Value: rows.length },
+      { Metric: "Total Customer Amount USD", Value: rows.reduce((sum, r) => sum + Number(r["Customer Amount USD"] || 0), 0) },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), "Summary");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Client Shipments");
+    const safeName = customerName.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
+    XLSX.writeFile(wb, `freight-os-client-report-${safeName}-${reportMonth || "all"}.xlsx`);
+  }
 
-    const rows = getDetailedReportRows();
-    const moneyText = (value, currency = "USD") => money(value, currency).replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const safe = (value) => String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-    const shipmentsHtml = rows.map((row) => `
-      <tr>
-        <td>${safe(row.created)}</td>
-        <td>${safe(row.shipment)}</td>
-        <td>${safe(row.customer)}</td>
-        <td>${safe(row.company)}</td>
-        <td>${safe(row.route)}</td>
-        <td>${safe(row.status)}</td>
-        <td>${row.qty}</td>
-        <td>${moneyText(row.sellUsd)}</td>
-        <td>${moneyText(row.costsUsd)}</td>
-        <td>${moneyText(row.netProfit)}</td>
-      </tr>
-    `).join("");
-
-    const customersHtml = reportData.customers.map((row) => `
-      <tr><td>${safe(row.name)}</td><td>${row.shipments}</td><td>${moneyText(row.revenue)}</td><td>${moneyText(row.netProfit)}</td></tr>
-    `).join("");
-
-    const expensesHtml = reportData.expenseCompanies.map((row) => `
-      <tr><td>${safe(row.company)}</td><td>${row.count}</td><td>${moneyText(row.amountUsd)}</td></tr>
-    `).join("");
-
-    const html = `
-      <!doctype html>
-      <html>
-        <head>
-          <title>Freight OS Report ${safe(reportMonth)}</title>
-          <style>
-            body { font-family: Arial, sans-serif; color: #111827; padding: 24px; }
-            h1, h2 { margin-bottom: 8px; }
-            .meta { color: #4b5563; margin-bottom: 18px; }
-            .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 18px 0; }
-            .box { border: 1px solid #d1d5db; border-radius: 10px; padding: 10px; }
-            .box b { display: block; margin-top: 6px; font-size: 18px; }
-            table { width: 100%; border-collapse: collapse; margin: 14px 0 24px; font-size: 11px; }
-            th, td { border: 1px solid #d1d5db; padding: 7px; text-align: left; }
-            th { background: #f3f4f6; }
-            @media print { button { display: none; } body { padding: 0; } }
-          </style>
-        </head>
-        <body>
-          <h1>Freight OS Detailed Monthly Report</h1>
-          <div class="meta">Month: ${safe(formatMonthLabel(reportMonth))} | Exported: ${new Date().toLocaleString()}</div>
-
-          <div class="summary">
-            <div class="box">Shipments <b>${reportData.summary.shipments}</b></div>
-            <div class="box">Revenue <b>${moneyText(reportData.summary.revenue)}</b></div>
-            <div class="box">Total Costs <b>${moneyText(reportData.summary.costs)}</b></div>
-            <div class="box">Net Profit <b>${moneyText(reportData.summary.netProfit)}</b></div>
-          </div>
-
-          <h2>Shipment Details</h2>
-          <table>
-            <thead>
-              <tr><th>Created</th><th>Shipment</th><th>Customer</th><th>Company</th><th>Route</th><th>Status</th><th>Qty</th><th>Revenue</th><th>Costs</th><th>Net</th></tr>
-            </thead>
-            <tbody>${shipmentsHtml || '<tr><td colspan="10">No shipments for this month.</td></tr>'}</tbody>
-          </table>
-
-          <h2>Profit by Customer</h2>
-          <table>
-            <thead><tr><th>Customer</th><th>Shipments</th><th>Revenue</th><th>Net Profit</th></tr></thead>
-            <tbody>${customersHtml || '<tr><td colspan="4">No customer data for this month.</td></tr>'}</tbody>
-          </table>
-
-          <h2>Expenses by Company</h2>
-          <table>
-            <thead><tr><th>Company</th><th>Expense Count</th><th>Amount USD</th></tr></thead>
-            <tbody>${expensesHtml || '<tr><td colspan="3">No expenses for this month.</td></tr>'}</tbody>
-          </table>
-
-          <button onclick="window.print()">Print / Save as PDF</button>
-          <script>window.onload = () => setTimeout(() => window.print(), 400);</script>
-        </body>
-      </html>
-    `;
-
-    const reportWindow = window.open("", "_blank");
-    if (!reportWindow) {
-      alert("Please allow popups to export PDF.");
+  function exportClientReportPdf() {
+    const rows = getClientReportShipments();
+    if (!rows.length) {
+      alert("No shipments found for this client and month.");
       return;
     }
-    reportWindow.document.open();
-    reportWindow.document.write(html);
-    reportWindow.document.close();
+    const customerName = clientReportCustomer === "all" ? "All Customers" : clientReportCustomer;
+    const doc = new jsPDF({ orientation: "landscape" });
+    doc.setFontSize(16);
+    doc.text(`Shipment Report - ${customerName}`, 14, 16);
+    doc.setFontSize(10);
+    doc.text(`Month: ${formatMonthLabel(reportMonth)} | Exported: ${new Date().toLocaleString()}`, 14, 24);
+    autoTable(doc, {
+      startY: 30,
+      head: [["Date", "Shipment", "Carrier", "Route", "Cargo", "Qty", "Booking", "Vessel", "Cut-Off", "ETD", "ETA", "Status", "Payment", "Amount"]],
+      body: rows.map((s) => [
+        getShipmentReportDate(s) ? new Date(getShipmentReportDate(s)).toISOString().slice(0, 10) : "Not set",
+        s.id,
+        s.line || "",
+        `${s.pol || ""} → ${s.pod || ""}`,
+        `${s.cargoType || ""} / ${s.containerType || ""}`,
+        Number(s.qty || 0),
+        s.bookingNo || "Not set",
+        s.vessel || "Not set",
+        s.cutOff || "",
+        s.etd || "",
+        s.eta || "",
+        s.status || "",
+        s.paymentStatus || "",
+        money(calcOceanSell(s)),
+      ]),
+      styles: { fontSize: 7 },
+      headStyles: { fontSize: 7 },
+    });
+    const safeName = customerName.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
+    doc.save(`freight-os-client-report-${safeName}-${reportMonth || "all"}.pdf`);
   }
 
   function updateBooking(field, value) {
@@ -1858,8 +1835,8 @@ function importLocalBackup(event) {
                 <FormField label="Report Month">
                   <input type="month" value={reportMonth} onChange={(e) => setReportMonth(e.target.value)} />
                 </FormField>
-                {canSeeFinance && <button className="saveBtn" onClick={exportMonthlyReportExcel}>Export Excel</button>}
-                {canSeeFinance && <button className="ghostBtn" onClick={exportMonthlyReportPdf}>Export PDF</button>}
+                {canSeeFinance && <button className="saveBtn" onClick={exportMonthlyReportExcel}>Export Monthly Excel</button>}
+                {canSeeFinance && <button className="ghostBtn" onClick={exportMonthlyReportPdf}>Export Monthly PDF</button>}
               </div>
             </div>
 
@@ -1901,6 +1878,22 @@ function importLocalBackup(event) {
                     <b>{money(row.amountUsd)}</b>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            <div className="note mt">
+              <div className="panelHead">
+                <div>
+                  <h3>Client Shipment Report</h3>
+                  <p className="smallText">Customer-facing report: no buy costs, no internal expenses, and no profit.</p>
+                </div>
+                <div className="actions">
+                  <FormField label="Client">
+                    <CustomerSelect value={clientReportCustomer} customers={[{ id: "all", name: "all" }, ...customers]} onChange={setClientReportCustomer} />
+                  </FormField>
+                  <button className="saveBtn" onClick={exportClientReportExcel}>Export Client Excel</button>
+                  <button className="ghostBtn" onClick={exportClientReportPdf}>Export Client PDF</button>
+                </div>
               </div>
             </div>
 
