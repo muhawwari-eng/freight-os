@@ -216,12 +216,15 @@ const emptyTransportForm = {
   company: "",
   from: "",
   to: "",
+  truckQty: "1",
   costTry: "",
+  taxRate: "0",
   note: "",
 };
 
 const emptyExpenseForm = {
   shipmentId: "",
+  company: "",
   type: "Operation",
   description: "",
   amountUsd: "",
@@ -283,8 +286,15 @@ function calcOceanSell(shipment) {
   return Number(shipment.sellUsd || 0) * Number(shipment.qty || 0);
 }
 
+function calcSingleTransportTry(transport) {
+  const truckQty = Number(transport.truckQty || 1) || 1;
+  const baseCost = Number(transport.costTry || 0) * truckQty;
+  const taxRate = Number(transport.taxRate || 0) || 0;
+  return baseCost + (baseCost * taxRate / 100);
+}
+
 function calcTransportTry(shipment) {
-  return getTransports(shipment).reduce((sum, t) => sum + Number(t.costTry || 0), 0);
+  return getTransports(shipment).reduce((sum, t) => sum + calcSingleTransportTry(t), 0);
 }
 
 function calcExpensesUsd(shipment) {
@@ -292,7 +302,8 @@ function calcExpensesUsd(shipment) {
 }
 
 function getRate(shipment, exchangeRate) {
-  return Number(exchangeRate || shipment.fx || 1) || 1;
+  // Historical shipments keep their own saved FX rate. The active rate is a fallback only.
+  return Number(shipment.fx || exchangeRate || 1) || 1;
 }
 
 function calcTotalCostUsd(shipment, exchangeRate) {
@@ -859,7 +870,9 @@ function addShipmentFromForm(e) {
       company: transportForm.company,
       from: transportForm.from,
       to: transportForm.to,
+      truckQty: Number(transportForm.truckQty || 1),
       costTry: Number(transportForm.costTry),
+      taxRate: Number(transportForm.taxRate || 0),
       note: transportForm.note,
     };
 
@@ -884,6 +897,7 @@ function addShipmentFromForm(e) {
     }
 
     const newExpense = {
+      company: expenseForm.company || "Not set",
       type: expenseForm.type,
       description: expenseForm.description,
       amountUsd: Number(expenseForm.amountUsd),
@@ -995,6 +1009,45 @@ function downloadLocalBackup() {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function importLocalBackup(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(String(reader.result || "{}"));
+      const backupShipments = Array.isArray(data.shipments) ? data.shipments : [];
+      const backupCustomers = Array.isArray(data.customers) ? data.customers : [];
+      const backupSuppliers = Array.isArray(data.suppliers) ? data.suppliers : [];
+      const backupPorts = Array.isArray(data.ports) ? data.ports : [];
+
+      if (!backupShipments.length && !backupCustomers.length && !backupSuppliers.length && !backupPorts.length) {
+        alert("This backup file does not contain Freight OS data.");
+        return;
+      }
+
+      if (!confirm("Import this local backup? Current data will be replaced by the backup file.")) return;
+
+      setShipments(dedupeShipments(backupShipments));
+      setCustomers(backupCustomers);
+      setSuppliers(backupSuppliers.length ? backupSuppliers : defaultSuppliers);
+      setPorts(backupPorts.length ? backupPorts : defaultWorldPorts);
+      if (data.fxSettings) setFxSettings((prev) => ({ ...prev, ...data.fxSettings }));
+      setSelectedShipment(null);
+      setTab("dashboard");
+      setSaveStatus("Backup imported - syncing online...");
+      alert("Backup imported successfully.");
+    } catch (error) {
+      console.error("Backup import failed:", error);
+      alert("Could not import backup. Please select a valid Freight OS backup JSON file.");
+    } finally {
+      event.target.value = "";
+    }
+  };
+  reader.readAsText(file);
 }
 
   useEffect(() => {
@@ -1139,7 +1192,7 @@ function downloadLocalBackup() {
               <form onSubmit={saveEditShipment} className="editBox">
                 <div className="formGrid">
                   <FormField label="Client Name"><CustomerSelect value={editForm.customer} customers={customers} onChange={(value) => updateEdit("customer", value)} disabled={!canEditCore} /></FormField>
-                  <FormField label="Shipping Line / Company"><SupplierSelect value={editForm.line} suppliers={suppliers} onChange={(value) => updateEdit("line", value)} disabled={!canEditCore} /></FormField>
+                  <FormField label="Carrier / Supplier Company"><SupplierSelect value={editForm.line} suppliers={suppliers} onChange={(value) => updateEdit("line", value)} disabled={!canEditCore} /></FormField>
                   <FormField label="POL / Origin Port"><PortSelect value={editForm.pol} ports={ports} onChange={(value) => updateEdit("pol", value)} disabled={!canEditCore} /></FormField>
                   <FormField label="POD / Destination Port"><PortSelect value={editForm.pod} ports={ports} onChange={(value) => updateEdit("pod", value)} disabled={!canEditCore} /></FormField>
                   <FormField label="Booking No"><input value={editForm.bookingNo} onChange={(e) => updateEdit("bookingNo", e.target.value)} /></FormField>
@@ -1170,7 +1223,7 @@ function downloadLocalBackup() {
                   <p><b>ETD / ETA:</b> {selectedShipment.etd || "Not set"} / {selectedShipment.eta || "Not set"}</p>
                   <p><b>Status:</b> {selectedShipment.status}</p>
                   <p><b>Payment:</b> {selectedShipment.paymentStatus}</p>
-                  <p><b>FX Rate:</b> {activeFxRate} TRY/USD</p>
+                  <p><b>FX Rate:</b> {selectedShipment.fx || activeFxRate} TRY/USD</p>
                 </div>
 
                 {canSeeFinance && (
@@ -1202,7 +1255,7 @@ function downloadLocalBackup() {
                     <h3>Expenses</h3>
                     {getExpenses(selectedShipment).length === 0 && <p>No extra expenses.</p>}
                     {getExpenses(selectedShipment).map((e, i) => (
-                      <p key={i}>{e.type} - {e.description || "No description"} - {money(e.amountUsd)}</p>
+                      <p key={i}>{e.company || "No company"} - {e.type} - {e.description || "No description"} - {money(e.amountUsd)}</p>
                     ))}
                   </>
                 )}
@@ -1287,7 +1340,7 @@ function downloadLocalBackup() {
             <form onSubmit={addShipmentFromForm}>
               <div className="formGrid">
                 <FormField label="Client Name"><CustomerSelect value={bookingForm.customer} customers={customers} onChange={(value) => updateBooking("customer", value)} /></FormField>
-                <FormField label="Shipping Line / Company"><SupplierSelect value={bookingForm.line} suppliers={suppliers} onChange={(value) => updateBooking("line", value)} /></FormField>
+                <FormField label="Carrier / Supplier Company"><SupplierSelect value={bookingForm.line} suppliers={suppliers} onChange={(value) => updateBooking("line", value)} /></FormField>
                 <FormField label="POL / Origin Port"><PortSelect value={bookingForm.pol} ports={ports} onChange={(value) => updateBooking("pol", value)} /></FormField>
                 <FormField label="POD / Destination Port"><PortSelect value={bookingForm.pod} ports={ports} onChange={(value) => updateBooking("pod", value)} /></FormField>
                 <FormField label="Booking No"><input value={bookingForm.bookingNo} onChange={(e) => updateBooking("bookingNo", e.target.value)} /></FormField>
@@ -1319,7 +1372,9 @@ function downloadLocalBackup() {
                   <FormField label="Transport Company"><input value={transportForm.company} onChange={(e) => updateTransport("company", e.target.value)} /></FormField>
                   <FormField label="From"><input value={transportForm.from} onChange={(e) => updateTransport("from", e.target.value)} /></FormField>
                   <FormField label="To"><input value={transportForm.to} onChange={(e) => updateTransport("to", e.target.value)} /></FormField>
-                  <FormField label="Cost in TRY"><input type="number" value={transportForm.costTry} onChange={(e) => updateTransport("costTry", e.target.value)} /></FormField>
+                  <FormField label="Truck Quantity"><input type="number" min="1" value={transportForm.truckQty} onChange={(e) => updateTransport("truckQty", e.target.value)} /></FormField>
+                  <FormField label="Cost per Truck in TRY"><input type="number" value={transportForm.costTry} onChange={(e) => updateTransport("costTry", e.target.value)} /></FormField>
+                  <FormField label="VAT / Tax Rate"><select value={transportForm.taxRate} onChange={(e) => updateTransport("taxRate", e.target.value)}><option value="0">0%</option><option value="20">20%</option></select></FormField>
                   <FormField label="Note"><input value={transportForm.note} onChange={(e) => updateTransport("note", e.target.value)} /></FormField>
                 </div>
                 <button className="saveBtn" type="submit">Add Transport Cost</button>
@@ -1337,6 +1392,7 @@ function downloadLocalBackup() {
               <form onSubmit={addExpenseToShipment}>
                 <div className="formGrid one">
                   <FormField label="Shipment"><select value={expenseForm.shipmentId} onChange={(e) => updateExpense("shipmentId", e.target.value)}><option value="">Select Shipment</option>{shipments.map((s) => <option key={s.id} value={s.id}>{s.id} - {s.customer}</option>)}</select></FormField>
+                  <FormField label="Expense Company"><SupplierSelect value={expenseForm.company} suppliers={suppliers} onChange={(value) => updateExpense("company", value)} /></FormField>
                   <FormField label="Expense Type"><select value={expenseForm.type} onChange={(e) => updateExpense("type", e.target.value)}><option value="Operation">Operation</option><option value="Commission">Commission</option><option value="Other">Other</option></select></FormField>
                   <FormField label="Description"><input value={expenseForm.description} onChange={(e) => updateExpense("description", e.target.value)} /></FormField>
                   <FormField label="Amount USD"><input type="number" value={expenseForm.amountUsd} onChange={(e) => updateExpense("amountUsd", e.target.value)} /></FormField>
@@ -1523,6 +1579,10 @@ function downloadLocalBackup() {
             <div className="actions mt">
               {canSeeFinance && <button className="saveBtn" onClick={() => createBackup(true)}>Create Manual Backup</button>}
               <button className="ghostBtn" onClick={downloadLocalBackup}>Download Local Backup</button>
+              <label className="ghostBtn" style={{ display: "inline-block" }}>
+                Import Local Backup
+                <input type="file" accept="application/json,.json" onChange={importLocalBackup} style={{ display: "none" }} />
+              </label>
               {role === "admin" && <button className="dangerBtn" onClick={resetDemoData}>Reset Demo Data</button>}
             </div>
           </section>
@@ -1650,12 +1710,11 @@ function CustomerSelect({ value, customers, onChange, disabled = false }) {
 }
 
 function SupplierSelect({ value, suppliers, onChange, disabled = false }) {
-  const shippingLines = suppliers.filter((supplier) => supplier.type === "Shipping Line");
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled}>
-      <option value="">Select Shipping Line</option>
-      {shippingLines.map((supplier) => (
-        <option key={supplier.id} value={supplier.name}>{supplier.name}</option>
+      <option value="">Select Company</option>
+      {suppliers.map((supplier) => (
+        <option key={supplier.id} value={supplier.name}>{supplier.name} - {supplier.type}</option>
       ))}
     </select>
   );
@@ -1676,7 +1735,7 @@ function ShipmentCard({ shipment, exchangeRate, canSeeFinance, onOpen }) {
   return (
     <button className="shipmentCard" onClick={onOpen}>
       <div>
-        <b>{shipment.id}</b>
+        <b>{shipment.customer}</b>
         <h3>{shipment.vessel || shipment.line}</h3>
         <p>{shipment.pol} → {shipment.pod}</p>
         <p>✂ Cut-Off: {daysLeft === null ? "Not set" : `${shipment.cutOff} (${daysLeft} days left)`}</p>
@@ -1711,7 +1770,7 @@ function TransportList({ shipments, deleteTransport, canSeeFinance }) {
             <p>Total: {canSeeFinance ? money(calcTransportTry(s), "TRY") : "Hidden"} / {getTransports(s).length} records</p>
             {getTransports(s).map((t, index) => (
               <div className="transportLine" key={`${s.id}-transport-${index}`}>
-                <span>{t.company} - {canSeeFinance ? money(t.costTry, "TRY") : "Hidden"}</span>
+                <span>{t.company} - Trucks: {t.truckQty || 1} - VAT: {t.taxRate || 0}% - {canSeeFinance ? money(calcSingleTransportTry(t), "TRY") : "Hidden"}</span>
                 <button className="dangerBtn" onClick={() => deleteTransport(s.id, index)}>Delete</button>
               </div>
             ))}
@@ -1733,7 +1792,7 @@ function ExpenseList({ shipments, deleteExpense, canEditCore }) {
             <p>Total expenses: {money(calcExpensesUsd(s))}</p>
             {getExpenses(s).map((e, index) => (
               <div className="transportLine" key={`${s.id}-expense-${index}`}>
-                <span>{e.type}: {e.description || "No description"} - {money(e.amountUsd)}</span>
+                <span>{e.company || "No company"} - {e.type}: {e.description || "No description"} - {money(e.amountUsd)}</span>
                 {canEditCore && <button className="dangerBtn" onClick={() => deleteExpense(s.id, index)}>Delete</button>}
               </div>
             ))}
