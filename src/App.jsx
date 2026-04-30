@@ -609,15 +609,14 @@ function generateInvoicePdf(shipment, exchangeRate) {
   const paymentStatus = remainingAmount <= 0 ? "Paid" : paidAmount > 0 ? "Partially Paid" : "Unpaid";
   const bookingNo = shipment.bookingNo && shipment.bookingNo !== "Not set" ? shipment.bookingNo : "Not set";
   const routeText = `${shipment.pol || ""} to ${shipment.pod || ""}`;
-  const routeArrow = `${shipment.pol || ""} → ${shipment.pod || ""}`;
   const containerText = getContainerDescription(shipment);
 
-  const dark = [18, 22, 28];
+  const pageW = 210;
+  const dark = [14, 18, 22];
   const text = [20, 24, 31];
   const muted = [90, 100, 112];
-  const line = [205, 212, 220];
-  const soft = [248, 249, 251];
-  const chip = [245, 246, 248];
+  const line = [210, 216, 224];
+  const light = [248, 250, 252];
 
   const setRgb = (kind, color) => {
     if (kind === "fill") doc.setFillColor(color[0], color[1], color[2]);
@@ -625,126 +624,127 @@ function generateInvoicePdf(shipment, exchangeRate) {
     if (kind === "text") doc.setTextColor(color[0], color[1], color[2]);
   };
 
-  const labelValue = (label, value, x, y, options = {}) => {
-    const labelWidth = options.labelWidth || 34;
-    doc.setFont(undefined, options.boldLabel ? "bold" : "normal");
-    doc.setFontSize(options.fontSize || 10);
-    setRgb("text", text);
-    doc.text(label, x, y);
-    doc.text(":", x + labelWidth, y);
-    doc.setFont(undefined, options.boldValue ? "bold" : "normal");
-    doc.text(String(value || "-"), x + labelWidth + 7, y);
-  };
-
+  // Page background
   doc.setFillColor(255, 255, 255);
   doc.rect(0, 0, 210, 297, "F");
 
-  // Header inspired by the clean white FSC invoice design.
+  // Header
   try {
-    doc.addImage(FSC_LOGO_DATA_URL, "PNG", 13, 13, 42, 36);
+    doc.addImage(FSC_LOGO_DATA_URL, "PNG", 13, 11, 36, 30);
   } catch (error) {
     console.warn("Logo could not be added to invoice:", error);
   }
 
   setRgb("draw", line);
-  doc.setLineWidth(0.45);
-  doc.line(61, 13, 61, 45);
+  doc.setLineWidth(0.4);
+  doc.line(55, 12, 55, 43);
 
   setRgb("text", text);
   doc.setFont(undefined, "bold");
-  doc.setFontSize(25);
-  doc.text(COMPANY_INFO.name, 68, 23);
+  doc.setFontSize(24);
+  doc.text(COMPANY_INFO.name, 61, 21);
   doc.setFont(undefined, "normal");
   doc.setFontSize(10);
-  doc.text(COMPANY_INFO.address, 68, 31);
-  doc.text(COMPANY_INFO.phone, 68, 39);
+  doc.text(COMPANY_INFO.address, 61, 29);
+  doc.text(COMPANY_INFO.phone, 61, 36);
 
   doc.setFont(undefined, "bold");
-  doc.setFontSize(30);
-  doc.text("INVOICE", 198, 24, { align: "right" });
+  doc.setFontSize(28);
+  doc.text("INVOICE", 195, 23, { align: "right" });
   setRgb("draw", line);
-  doc.setLineWidth(0.4);
-  doc.roundedRect(154, 31, 42, 11, 3.5, 3.5, "S");
-  doc.setFontSize(12);
-  setRgb("text", text);
-  doc.text(invoiceNo, 175, 38.5, { align: "center" });
+  setRgb("fill", [255, 255, 255]);
+  doc.roundedRect(154, 29, 41, 10, 3, 3, "S");
+  doc.setFontSize(11);
+  doc.text(invoiceNo, 174.5, 36, { align: "center" });
 
   setRgb("draw", dark);
-  doc.setLineWidth(0.55);
-  doc.line(12, 55, 198, 55);
+  doc.setLineWidth(0.45);
+  doc.line(12, 52, 198, 52);
 
-  // Bill to
+  // Bill to + invoice details
+  doc.setFontSize(12);
   doc.setFont(undefined, "bold");
-  doc.setFontSize(13);
   setRgb("text", text);
-  doc.text("BILL TO", 20, 69);
+  doc.text("BILL TO", 20, 66);
   doc.setFontSize(15);
-  doc.text(shipment.customer || "Customer", 20, 82);
+  doc.text(shipment.customer || "Customer", 20, 78);
   setRgb("draw", line);
   doc.setLineWidth(0.3);
-  doc.line(20, 86, 88, 86);
+  doc.line(20, 82, 84, 82);
   doc.setFont(undefined, "normal");
   doc.setFontSize(10);
   setRgb("text", muted);
-  doc.text("Phone: -", 20, 99);
-  doc.text("Email: -", 20, 108);
-  doc.text("Address: -", 20, 117);
+  doc.text("Phone: -", 20, 94);
+  doc.text("Email: -", 20, 103);
+  doc.text("Address: -", 20, 112);
 
-  // Invoice details
-  doc.setFont(undefined, "bold");
-  doc.setFontSize(13);
   setRgb("text", text);
-  doc.text("INVOICE DETAILS", 122, 69);
-  let detailY = 80;
-  labelValue("Invoice No.", invoiceNo, 122, detailY, { labelWidth: 32 });
-  labelValue("Invoice Date", invoiceDate, 122, detailY + 8, { labelWidth: 32 });
-  labelValue("Booking No.", bookingNo, 122, detailY + 16, { labelWidth: 32, boldLabel: true, boldValue: true });
-  labelValue("Vessel", shipment.vessel || "Not set", 122, detailY + 24, { labelWidth: 32 });
-  labelValue("ETD", shipment.etd || "Not set", 122, detailY + 32, { labelWidth: 32 });
-  labelValue("ETA", shipment.eta || "Not set", 122, detailY + 40, { labelWidth: 32 });
+  doc.setFont(undefined, "bold");
+  doc.setFontSize(12);
+  doc.text("INVOICE DETAILS", 122, 66);
+
+  const details = [
+    ["Invoice No.", invoiceNo],
+    ["Invoice Date", invoiceDate],
+    ["Booking No.", bookingNo],
+    ["Vessel", shipment.vessel || "Not set"],
+    ["ETD", shipment.etd || "Not set"],
+    ["ETA", shipment.eta || "Not set"],
+  ];
+
   doc.setFont(undefined, "normal");
   doc.setFontSize(10);
-  doc.text("Payment Status", 122, detailY + 48);
-  doc.text(":", 154, detailY + 48);
+  let detailY = 76;
+  details.forEach(([label, value], index) => {
+    if (label === "Booking No.") doc.setFont(undefined, "bold");
+    else doc.setFont(undefined, "normal");
+    doc.text(label, 122, detailY + index * 8);
+    doc.text(":", 153, detailY + index * 8);
+    doc.text(String(value), 160, detailY + index * 8);
+  });
+
+  doc.setFont(undefined, "normal");
+  doc.text("Payment Status", 122, detailY + details.length * 8);
+  doc.text(":", 153, detailY + details.length * 8);
   if (paymentStatus === "Unpaid") {
     setRgb("fill", dark);
-    doc.roundedRect(162, detailY + 43, 22, 7.5, 3.5, 3.5, "F");
+    doc.roundedRect(160, detailY + details.length * 8 - 5, 20, 7, 3, 3, "F");
     doc.setTextColor(255, 255, 255);
     doc.setFont(undefined, "bold");
-    doc.setFontSize(8.5);
-    doc.text("Unpaid", 173, detailY + 48.2, { align: "center" });
+    doc.setFontSize(8);
+    doc.text("Unpaid", 170, detailY + details.length * 8, { align: "center" });
+    setRgb("text", text);
+    doc.setFontSize(10);
   } else {
     doc.setFont(undefined, "bold");
-    setRgb("text", text);
-    doc.text(paymentStatus, 162, detailY + 48);
+    doc.text(paymentStatus, 160, detailY + details.length * 8);
   }
 
-  // Summary cards
-  const cardY = 130;
+  // Shipment summary cards
+  const cardY = 128;
   setRgb("draw", line);
   setRgb("fill", [255, 255, 255]);
-  doc.setLineWidth(0.25);
   doc.roundedRect(12, cardY, 186, 34, 3, 3, "S");
-  const cards = [
+  const columns = [
     ["Cargo Type", shipment.cargoType || "FCL"],
-    ["Route", routeArrow],
+    ["Route", `${shipment.pol || ""} - ${shipment.pod || ""}`],
     ["Containers", containerText],
     ["Vessel", shipment.vessel || "Not set"],
     ["Booking No", bookingNo],
   ];
-  const colW = 186 / cards.length;
-  cards.forEach(([label, value], i) => {
+  const colW = 186 / columns.length;
+  columns.forEach(([label, value], i) => {
     const x = 12 + i * colW;
     if (i > 0) {
       setRgb("draw", line);
-      doc.line(x, cardY + 6, x, cardY + 28);
+      doc.line(x, cardY + 5, x, cardY + 29);
     }
     setRgb("text", text);
     doc.setFont(undefined, "bold");
-    doc.setFontSize(10.5);
+    doc.setFontSize(10);
     doc.text(label, x + colW / 2, cardY + 15, { align: "center" });
-    doc.setFontSize(10.5);
-    doc.text(String(value), x + colW / 2, cardY + 26, { align: "center", maxWidth: colW - 5 });
+    doc.setFontSize(10);
+    doc.text(String(value), x + colW / 2, cardY + 25, { align: "center", maxWidth: colW - 4 });
   });
 
   // Item table
@@ -763,73 +763,66 @@ function generateInvoicePdf(shipment, exchangeRate) {
       0: { cellWidth: 100 },
       1: { halign: "center", cellWidth: 26 },
       2: { halign: "right", cellWidth: 35 },
-      3: { halign: "right", cellWidth: 35, fontStyle: "bold" },
+      3: { halign: "right", cellWidth: 35 },
     },
-    styles: { fontSize: 10.5, cellPadding: 4.8, lineColor: [210, 216, 224], lineWidth: 0.25 },
-    headStyles: { fillColor: dark, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 10.5 },
+    styles: { fontSize: 10, cellPadding: 4, lineColor: [220, 226, 232], lineWidth: 0.25 },
+    headStyles: { fillColor: dark, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 10 },
     bodyStyles: { fillColor: [255, 255, 255], textColor: text },
   });
 
   // Notes box
-  const notesY = 226;
+  const notesY = 225;
   setRgb("draw", line);
   setRgb("fill", [255, 255, 255]);
-  doc.roundedRect(12, notesY, 91, 38, 2.5, 2.5, "S");
+  doc.roundedRect(12, notesY, 88, 38, 2.5, 2.5, "S");
   setRgb("text", text);
   doc.setFont(undefined, "bold");
-  doc.setFontSize(11.5);
-  doc.text("Notes", 23, notesY + 9);
+  doc.setFontSize(11);
+  doc.text("Notes", 20, notesY + 9);
   setRgb("draw", line);
-  doc.line(23, notesY + 14, 94, notesY + 14);
+  doc.line(20, notesY + 14, 92, notesY + 14);
   doc.setFont(undefined, "normal");
-  doc.setFontSize(9.2);
-  doc.text("- All amounts are in USD", 23, notesY + 22);
-  doc.text("- Payment is due upon receipt of this invoice", 23, notesY + 29);
-  doc.text("- Thank you for your business", 23, notesY + 36);
+  doc.setFontSize(9);
+  doc.text("- All amounts are in USD", 20, notesY + 22);
+  doc.text("- Payment is due upon receipt of this invoice", 20, notesY + 29);
+  doc.text("- Thank you for your business", 20, notesY + 36);
 
-  // Totals area
-  const totalX = 113;
-  const totalY = 216;
+  // Totals
+  const totalX = 112;
+  const totalY = 217;
   setRgb("draw", line);
-  doc.setLineWidth(0.35);
   doc.line(totalX, totalY, 198, totalY);
   doc.setFont(undefined, "normal");
-  doc.setFontSize(13);
+  doc.setFontSize(12);
   setRgb("text", text);
-  doc.text("Subtotal", totalX + 4, totalY + 11);
-  doc.text(money(customerAmount), 196, totalY + 11, { align: "right" });
-  doc.text("Paid", totalX + 4, totalY + 23);
-  doc.text(money(paidAmount), 196, totalY + 23, { align: "right" });
+  doc.text("Subtotal", totalX + 4, totalY + 10);
+  doc.text(money(customerAmount), 196, totalY + 10, { align: "right" });
+  doc.text("Paid", totalX + 4, totalY + 21);
+  doc.text(money(paidAmount), 196, totalY + 21, { align: "right" });
   setRgb("draw", dark);
-  doc.setLineWidth(0.6);
-  doc.line(totalX, totalY + 31, 198, totalY + 31);
+  doc.setLineWidth(0.5);
+  doc.line(totalX, totalY + 29, 198, totalY + 29);
   doc.setFont(undefined, "bold");
-  doc.setFontSize(16);
-  doc.text("Balance Due", totalX + 4, totalY + 43);
-  doc.text(money(remainingAmount), 196, totalY + 43, { align: "right" });
+  doc.setFontSize(15);
+  doc.text("Balance Due", totalX + 4, totalY + 40);
+  doc.text(money(remainingAmount), 196, totalY + 40, { align: "right" });
 
-  // Thank you line
-  setRgb("text", text);
-  doc.setFont(undefined, "italic");
-  doc.setFontSize(18);
-  doc.text("Thank you for your trust", 105, 273, { align: "center" });
+  // Footer
   setRgb("draw", line);
   doc.setLineWidth(0.35);
-  doc.line(42, 271, 66, 271);
-  doc.line(144, 271, 168, 271);
-
-  // Footer strip
-  setRgb("fill", soft);
+  doc.line(12, 277, 198, 277);
+  setRgb("fill", light);
   doc.roundedRect(12, 280, 186, 10, 1.5, 1.5, "F");
   setRgb("text", text);
   doc.setFont(undefined, "bold");
   doc.setFontSize(9);
-  doc.text(COMPANY_INFO.name, 58, 287, { align: "center" });
+  doc.text(COMPANY_INFO.name, 62, 287, { align: "center" });
   doc.text(COMPANY_INFO.phone, 105, 287, { align: "center" });
-  doc.text(COMPANY_INFO.address, 156, 287, { align: "center" });
+  doc.text(COMPANY_INFO.address, 155, 287, { align: "center" });
 
   doc.save(`${invoiceNo}-${safeFileName(shipment.customer)}.pdf`);
 }
+
 
 export default function App() {
   const [shipments, setShipments] = useState([]);
