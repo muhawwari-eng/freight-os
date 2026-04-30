@@ -607,23 +607,27 @@ function generateInvoicePdf(shipment, exchangeRate) {
   const paidAmount = paymentSummary.receivablePaid;
   const remainingAmount = Math.max(customerAmount - paidAmount, 0);
 
-  doc.setFillColor(6, 18, 34);
-  doc.rect(0, 0, 210, 34, "F");
+  // Clean white header so the black FSC logo remains visible and professional.
+  doc.setFillColor(255, 255, 255);
+  doc.rect(0, 0, 210, 36, "F");
+  doc.setDrawColor(14, 116, 144);
+  doc.setLineWidth(0.6);
+  doc.line(14, 36, 196, 36);
 
   try {
-    doc.addImage(FSC_LOGO_DATA_URL, "PNG", 14, 6, 30, 22);
+    doc.addImage(FSC_LOGO_DATA_URL, "PNG", 14, 5, 32, 24);
   } catch (error) {
     console.warn("Logo could not be added to invoice:", error);
   }
 
-  doc.setTextColor(255, 255, 255);
+  doc.setTextColor(15, 23, 42);
   doc.setFontSize(18);
   doc.setFont(undefined, "bold");
-  doc.text(COMPANY_INFO.name, 50, 15);
+  doc.text(COMPANY_INFO.name, 52, 15);
   doc.setFontSize(9);
   doc.setFont(undefined, "normal");
-  doc.text(COMPANY_INFO.address, 50, 22);
-  doc.text(COMPANY_INFO.phone, 50, 28);
+  doc.text(COMPANY_INFO.address, 52, 22);
+  doc.text(COMPANY_INFO.phone, 52, 28);
 
   doc.setFontSize(20);
   doc.setFont(undefined, "bold");
@@ -644,15 +648,16 @@ function generateInvoicePdf(shipment, exchangeRate) {
   doc.setFont(undefined, "normal");
   doc.text(`Invoice No: ${invoiceNo}`, 120, 55);
   doc.text(`Invoice Date: ${invoiceDate}`, 120, 61);
-  doc.text(`Shipment ID: ${shipment.id}`, 120, 67);
-  doc.text(`Payment Status: ${remainingAmount <= 0 ? "Paid" : paidAmount > 0 ? "Partially Paid" : "Unpaid"}`, 120, 73);
+  doc.text(`Booking No: ${shipment.bookingNo || "Not set"}`, 120, 67);
+  doc.text(`Shipment ID: ${shipment.id}`, 120, 73);
+  doc.text(`Payment Status: ${remainingAmount <= 0 ? "Paid" : paidAmount > 0 ? "Partially Paid" : "Unpaid"}`, 120, 79);
 
   autoTable(doc, {
-    startY: 84,
+    startY: 88,
     theme: "grid",
-    head: [["Shipment", "Route", "Cargo", "Containers", "Vessel", "ETD", "ETA"]],
+    head: [["Booking No", "Route", "Cargo", "Containers", "Vessel", "ETD", "ETA"]],
     body: [[
-      shipment.id || "",
+      shipment.bookingNo || "Not set",
       `${shipment.pol || ""} → ${shipment.pod || ""}`,
       shipment.cargoType || "",
       getContainerDescription(shipment),
