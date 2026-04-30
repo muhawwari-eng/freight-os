@@ -253,6 +253,15 @@ const emptyPaymentForm = {
   note: "",
 };
 
+const emptyReceivableForm = {
+  shipmentId: "",
+  amount: "",
+  currency: "USD",
+  fxRate: "",
+  paidDate: new Date().toISOString().slice(0, 10),
+  note: "",
+};
+
 const emptyEditForm = {
   id: "",
   customer: "",
@@ -858,6 +867,7 @@ export default function App() {
   const [transportForm, setTransportForm] = useState(emptyTransportForm);
   const [expenseForm, setExpenseForm] = useState(emptyExpenseForm);
   const [paymentForm, setPaymentForm] = useState(emptyPaymentForm);
+  const [receivableForm, setReceivableForm] = useState(emptyReceivableForm);
   const [editForm, setEditForm] = useState(emptyEditForm);
   const [isEditing, setIsEditing] = useState(false);
   const [saveStatus, setSaveStatus] = useState("Saved automatically");
@@ -1294,6 +1304,10 @@ export default function App() {
     setPaymentForm((prev) => ({ ...prev, [field]: value }));
   }
 
+  function updateReceivable(field, value) {
+    setReceivableForm((prev) => ({ ...prev, [field]: value }));
+  }
+
   function updateEdit(field, value) {
     setEditForm((prev) => ({ ...prev, [field]: value }));
   }
@@ -1560,6 +1574,44 @@ function addShipmentFromForm(e) {
     setPaymentForm({ ...emptyPaymentForm, fxRate: String(activeFxRate) });
   }
 
+  function addReceivableToShipment(e) {
+    e.preventDefault();
+    if (!canManagePayments) {
+      alert("Only admin can add customer collections.");
+      return;
+    }
+    if (!receivableForm.shipmentId || !receivableForm.amount || !receivableForm.currency) {
+      alert("Please select shipment, currency, and amount.");
+      return;
+    }
+
+    const targetShipment = shipments.find((s) => s.id === receivableForm.shipmentId);
+    const newPayment = {
+      id: `REC-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      purchaseType: "Customer Receipt",
+      company: targetShipment?.customer || "Customer",
+      amount: Number(receivableForm.amount || 0),
+      currency: receivableForm.currency || "USD",
+      fxRate: Number(receivableForm.fxRate || targetShipment?.fx || activeFxRate || 1),
+      paidDate: receivableForm.paidDate || new Date().toISOString().slice(0, 10),
+      note: receivableForm.note,
+      createdAt: new Date().toISOString(),
+      createdBy: user?.email || "unknown",
+    };
+
+    let updatedSelected = null;
+    setShipments((prev) =>
+      prev.map((s) => {
+        if (s.id !== receivableForm.shipmentId) return s;
+        const updated = normalizeShipment({ ...s, payments: [newPayment, ...getPayments(s)] });
+        if (selectedShipment?.id === s.id) updatedSelected = updated;
+        return updated;
+      })
+    );
+    if (updatedSelected) setSelectedShipment(updatedSelected);
+    setReceivableForm({ ...emptyReceivableForm, fxRate: String(activeFxRate) });
+  }
+
   function deletePayment(shipmentId, paymentId) {
     if (!canManagePayments) {
       alert("Only admin can delete payments.");
@@ -1781,6 +1833,7 @@ function importLocalBackup(event) {
           <button className={tab === "transport" ? "active" : ""} onClick={() => setTab("transport")}>🚚 Local Transport</button>
           {canSeeFinance && <button className={tab === "expenses" ? "active" : ""} onClick={() => setTab("expenses")}>💸 Expenses</button>}
           {canSeeFinance && <button className={tab === "payments" ? "active" : ""} onClick={() => setTab("payments")}>💳 Payments</button>}
+          {canSeeFinance && <button className={tab === "receivables" ? "active" : ""} onClick={() => setTab("receivables")}>💰 Receivables</button>}
           {canSeeFinance && <button className={tab === "exchange" ? "active" : ""} onClick={() => setTab("exchange")}>💱 Exchange Rate</button>}
           <button className={tab === "ports" ? "active" : ""} onClick={() => setTab("ports")}>⚓ Ports</button>
           <button className={tab === "reports" ? "active" : ""} onClick={() => setTab("reports")}>📊 Reports</button>
@@ -2094,7 +2147,7 @@ function importLocalBackup(event) {
                 <form onSubmit={addPaymentToShipment}>
                   <div className="formGrid one">
                     <FormField label="Shipment"><select value={paymentForm.shipmentId} onChange={(e) => updatePayment("shipmentId", e.target.value)}><option value="">Select Shipment</option>{shipments.map((s) => <option key={s.id} value={s.id}>{s.id} - {s.customer}</option>)}</select></FormField>
-                    <FormField label="Payment / Purchase Type"><select value={paymentForm.purchaseType} onChange={(e) => updatePayment("purchaseType", e.target.value)}><option value="Ocean Freight">Ocean Freight</option><option value="Local Transport">Local Transport</option><option value="Expense">Expense</option><option value="Customer Receipt">Customer Receipt</option><option value="Other">Other</option></select></FormField>
+                    <FormField label="Payment / Purchase Type"><select value={paymentForm.purchaseType} onChange={(e) => updatePayment("purchaseType", e.target.value)}><option value="Ocean Freight">Ocean Freight</option><option value="Local Transport">Local Transport</option><option value="Expense">Expense</option><option value="Other">Other</option></select></FormField>
                     <FormField label="Company / Party"><input value={paymentForm.company} onChange={(e) => updatePayment("company", e.target.value)} placeholder="Carrier, transport company, supplier, or customer" /></FormField>
                     <FormField label="Amount"><input type="number" step="0.01" value={paymentForm.amount} onChange={(e) => updatePayment("amount", e.target.value)} /></FormField>
                     <FormField label="Currency"><select value={paymentForm.currency} onChange={(e) => updatePayment("currency", e.target.value)}><option value="USD">USD</option><option value="TRY">TRY</option></select></FormField>
@@ -2109,6 +2162,33 @@ function importLocalBackup(event) {
               )}
             </div>
             <PaymentsList shipments={shipments} exchangeRate={activeFxRate} canManagePayments={canManagePayments} deletePayment={deletePayment} onOpen={openShipmentDetails} />
+          </section>
+        )}
+
+        {tab === "receivables" && canSeeFinance && (
+          <section className="panel twoCols">
+            <div>
+              <h2>Receivables / Customer Collections</h2>
+              <p className="smallText">Track money collected from customers for each shipment. Only admin can add or delete collection records.</p>
+              {canManagePayments ? (
+                <form onSubmit={addReceivableToShipment}>
+                  <div className="formGrid one">
+                    <FormField label="Shipment"><select value={receivableForm.shipmentId} onChange={(e) => updateReceivable("shipmentId", e.target.value)}><option value="">Select Shipment</option>{shipments.map((s) => <option key={s.id} value={s.id}>{s.bookingNo && s.bookingNo !== "Not set" ? s.bookingNo : s.id} - {s.customer}</option>)}</select></FormField>
+                    <FormField label="Customer"><input value={shipments.find((s) => s.id === receivableForm.shipmentId)?.customer || ""} disabled /></FormField>
+                    <FormField label="Invoice Amount USD"><input value={receivableForm.shipmentId ? money(calcOceanSell(shipments.find((s) => s.id === receivableForm.shipmentId) || {})) : ""} disabled /></FormField>
+                    <FormField label="Collected Amount"><input type="number" step="0.01" value={receivableForm.amount} onChange={(e) => updateReceivable("amount", e.target.value)} /></FormField>
+                    <FormField label="Currency"><select value={receivableForm.currency} onChange={(e) => updateReceivable("currency", e.target.value)}><option value="USD">USD</option><option value="TRY">TRY</option></select></FormField>
+                    <FormField label="FX Rate TRY/USD"><input type="number" step="0.0001" value={receivableForm.fxRate || activeFxRate} onChange={(e) => updateReceivable("fxRate", e.target.value)} /></FormField>
+                    <FormField label="Collection Date"><input type="date" value={receivableForm.paidDate} onChange={(e) => updateReceivable("paidDate", e.target.value)} /></FormField>
+                    <FormField label="Note"><input value={receivableForm.note} onChange={(e) => updateReceivable("note", e.target.value)} /></FormField>
+                  </div>
+                  <button className="saveBtn" type="submit">Add Customer Collection</button>
+                </form>
+              ) : (
+                <div className="note"><p>You can view customer collections, but only admin can add or delete collection records.</p></div>
+              )}
+            </div>
+            <ReceivablesList shipments={shipments} exchangeRate={activeFxRate} canManagePayments={canManagePayments} deletePayment={deletePayment} onOpen={openShipmentDetails} />
           </section>
         )}
 
@@ -2419,6 +2499,7 @@ function getTitle(tab) {
     transport: "Local Transport",
     expenses: "Expenses",
     payments: "Payments & Purchases",
+    receivables: "Receivables",
     exchange: "Exchange Rate",
     ports: "Ports",
     reports: "Reports",
@@ -2593,6 +2674,59 @@ function PaymentSummaryBox({ shipment, exchangeRate }) {
         <div className="transportLine" key={row.type}>
           <span>{row.label} — Due {money(row.due)} / Paid {money(row.paid)} / Remaining {money(row.remaining)}</span>
           <b>{getPaymentStatusLabel(shipment, row.type, exchangeRate)}</b>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ReceivablesList({ shipments, exchangeRate, canManagePayments, deletePayment, onOpen }) {
+  const rows = shipments.map((shipment) => ({
+    shipment,
+    summary: getPaymentSummary(shipment, exchangeRate),
+    receipts: getPayments(shipment).filter((payment) => payment.purchaseType === "Customer Receipt"),
+  }));
+
+  const totals = rows.reduce(
+    (acc, row) => {
+      acc.invoice += row.summary.receivableDue;
+      acc.collected += row.summary.receivablePaid;
+      acc.remaining += row.summary.receivableRemaining;
+      return acc;
+    },
+    { invoice: 0, collected: 0, remaining: 0 }
+  );
+
+  return (
+    <div className="stackList">
+      <h3>Customer Receivables</h3>
+      <div className="detailGrid">
+        <p><b>Invoice Total:</b> {money(totals.invoice)}</p>
+        <p><b>Collected:</b> {money(totals.collected)}</p>
+        <p><b>Remaining:</b> {money(totals.remaining)}</p>
+      </div>
+      {rows.map(({ shipment, summary, receipts }) => (
+        <div className="note" key={`receivable-${shipment.id}`}>
+          <div className="panelHead">
+            <div>
+              <h3>{shipment.bookingNo && shipment.bookingNo !== "Not set" ? shipment.bookingNo : shipment.id}</h3>
+              <p>{shipment.customer} — {shipment.pol} → {shipment.pod}</p>
+            </div>
+            <button className="ghostBtn" onClick={() => onOpen(shipment)}>Open</button>
+          </div>
+          <div className="detailGrid">
+            <p><b>Invoice Amount:</b> {money(summary.receivableDue)}</p>
+            <p><b>Collected:</b> {money(summary.receivablePaid)}</p>
+            <p><b>Remaining:</b> {money(summary.receivableRemaining)}</p>
+            <p><b>Status:</b> {getPaymentStatusLabel(shipment, "Customer Receipt", exchangeRate)}</p>
+          </div>
+          {receipts.length === 0 && <p>No customer collections yet.</p>}
+          {receipts.map((payment) => (
+            <div className="transportLine" key={payment.id}>
+              <span>{payment.paidDate} — {money(payment.amount, payment.currency)} — {payment.note || "No note"}</span>
+              {canManagePayments && <button className="dangerBtn" onClick={() => deletePayment(shipment.id, payment.id)}>Delete</button>}
+            </div>
+          ))}
         </div>
       ))}
     </div>
