@@ -233,6 +233,17 @@ const emptyExpenseForm = {
   amountUsd: "",
 };
 
+const emptyPaymentForm = {
+  shipmentId: "",
+  purchaseType: "Ocean Freight",
+  company: "",
+  amount: "",
+  currency: "USD",
+  fxRate: "",
+  paidDate: new Date().toISOString().slice(0, 10),
+  note: "",
+};
+
 const emptyEditForm = {
   id: "",
   customer: "",
@@ -280,6 +291,10 @@ function getExpenses(shipment) {
   return Array.isArray(shipment.expenses) ? shipment.expenses : [];
 }
 
+function getPayments(shipment) {
+  return Array.isArray(shipment.payments) ? shipment.payments : [];
+}
+
 function calcOceanBuy(shipment) {
   return Number(shipment.buyUsd || 0) * Number(shipment.qty || 0);
 }
@@ -302,6 +317,56 @@ function calcTransportTry(shipment) {
 
 function calcExpensesUsd(shipment) {
   return getExpenses(shipment).reduce((sum, e) => sum + Number(e.amountUsd || 0), 0);
+}
+
+function getPaymentRate(payment, shipment, exchangeRate) {
+  return Number(payment.fxRate || shipment?.fx || exchangeRate || 1) || 1;
+}
+
+function paymentAmountUsd(payment, shipment, exchangeRate) {
+  const amount = Number(payment.amount || 0);
+  if ((payment.currency || "USD") === "TRY") return amount / getPaymentRate(payment, shipment, exchangeRate);
+  return amount;
+}
+
+function getPurchaseDueUsd(shipment, purchaseType, exchangeRate) {
+  if (purchaseType === "Customer Receipt") return calcOceanSell(shipment);
+  if (purchaseType === "Ocean Freight") return calcOceanBuy(shipment);
+  if (purchaseType === "Local Transport") return calcTransportTry(shipment) / getRate(shipment, exchangeRate);
+  if (purchaseType === "Expense") return calcExpensesUsd(shipment);
+  return 0;
+}
+
+function getPaidByTypeUsd(shipment, purchaseType, exchangeRate) {
+  return getPayments(shipment)
+    .filter((payment) => payment.purchaseType === purchaseType)
+    .reduce((sum, payment) => sum + paymentAmountUsd(payment, shipment, exchangeRate), 0);
+}
+
+function getPaymentStatusLabel(shipment, purchaseType, exchangeRate) {
+  const due = getPurchaseDueUsd(shipment, purchaseType, exchangeRate);
+  const paid = getPaidByTypeUsd(shipment, purchaseType, exchangeRate);
+  if (!due) return paid ? "Paid" : "No Due";
+  if (paid <= 0) return "Unpaid";
+  if (paid + 0.01 >= due) return "Paid";
+  return "Partially Paid";
+}
+
+function getPaymentSummary(shipment, exchangeRate) {
+  const payableTypes = ["Ocean Freight", "Local Transport", "Expense"];
+  const payableDue = payableTypes.reduce((sum, type) => sum + getPurchaseDueUsd(shipment, type, exchangeRate), 0);
+  const payablePaid = payableTypes.reduce((sum, type) => sum + getPaidByTypeUsd(shipment, type, exchangeRate), 0);
+  const receivableDue = getPurchaseDueUsd(shipment, "Customer Receipt", exchangeRate);
+  const receivablePaid = getPaidByTypeUsd(shipment, "Customer Receipt", exchangeRate);
+
+  return {
+    payableDue,
+    payablePaid,
+    payableRemaining: Math.max(payableDue - payablePaid, 0),
+    receivableDue,
+    receivablePaid,
+    receivableRemaining: Math.max(receivableDue - receivablePaid, 0),
+  };
 }
 
 function getRate(shipment, exchangeRate) {
@@ -452,6 +517,7 @@ function normalizeShipment(shipment) {
     paymentStatus: shipment.paymentStatus || "Unpaid",
     transports: getTransports(shipment),
     expenses: getExpenses(shipment),
+    payments: getPayments(shipment),
   };
 }
 
@@ -543,6 +609,7 @@ export default function App() {
   const [bookingForm, setBookingForm] = useState(emptyBookingForm);
   const [transportForm, setTransportForm] = useState(emptyTransportForm);
   const [expenseForm, setExpenseForm] = useState(emptyExpenseForm);
+  const [paymentForm, setPaymentForm] = useState(emptyPaymentForm);
   const [editForm, setEditForm] = useState(emptyEditForm);
   const [isEditing, setIsEditing] = useState(false);
   const [saveStatus, setSaveStatus] = useState("Saved automatically");
@@ -559,6 +626,7 @@ export default function App() {
   const role = profile?.role || "viewer";
   const canSeeFinance = role === "admin" || role === "partner";
   const canEditCore = role === "admin" || role === "partner";
+  const canManagePayments = role === "admin";
   const canEditOperation = canEditCore || role === "operation";
   const activeFxRate = Number(fxSettings.mode === "auto" ? fxSettings.autoRate : fxSettings.manualRate) || 1;
 
@@ -800,6 +868,10 @@ export default function App() {
       "Gross Profit USD": Number(calcGrossProfit(s, activeFxRate).toFixed(2)),
       "Expenses USD": Number(calcExpensesUsd(s).toFixed(2)),
       "Net Profit USD": Number(calcNetProfit(s, activeFxRate).toFixed(2)),
+      "Payables Paid USD": Number(getPaymentSummary(s, activeFxRate).payablePaid.toFixed(2)),
+      "Payables Remaining USD": Number(getPaymentSummary(s, activeFxRate).payableRemaining.toFixed(2)),
+      "Receivables Collected USD": Number(getPaymentSummary(s, activeFxRate).receivablePaid.toFixed(2)),
+      "Receivables Remaining USD": Number(getPaymentSummary(s, activeFxRate).receivableRemaining.toFixed(2)),
       "FX Rate": Number(getRate(s, activeFxRate).toFixed(4)),
     }));
   }
@@ -970,6 +1042,10 @@ export default function App() {
     setExpenseForm((prev) => ({ ...prev, [field]: value }));
   }
 
+  function updatePayment(field, value) {
+    setPaymentForm((prev) => ({ ...prev, [field]: value }));
+  }
+
   function updateEdit(field, value) {
     setEditForm((prev) => ({ ...prev, [field]: value }));
   }
@@ -1137,6 +1213,7 @@ function addShipmentFromForm(e) {
       paymentStatus: bookingForm.paymentStatus,
       transports: [],
       expenses: [],
+      payments: [],
     });
 
     setShipments((prev) => dedupeShipments([newShipment, ...prev]));
@@ -1195,6 +1272,63 @@ function addShipmentFromForm(e) {
     );
 
     setExpenseForm(emptyExpenseForm);
+  }
+
+  function addPaymentToShipment(e) {
+    e.preventDefault();
+    if (!canManagePayments) {
+      alert("Only admin can add payments.");
+      return;
+    }
+    if (!paymentForm.shipmentId || !paymentForm.purchaseType || !paymentForm.amount || !paymentForm.currency) {
+      alert("Please select shipment, payment type, currency, and amount.");
+      return;
+    }
+
+    const targetShipment = shipments.find((s) => s.id === paymentForm.shipmentId);
+    const newPayment = {
+      id: `PAY-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      purchaseType: paymentForm.purchaseType,
+      company: paymentForm.company || (paymentForm.purchaseType === "Customer Receipt" ? targetShipment?.customer : targetShipment?.line) || "Not set",
+      amount: Number(paymentForm.amount || 0),
+      currency: paymentForm.currency || "USD",
+      fxRate: Number(paymentForm.fxRate || targetShipment?.fx || activeFxRate || 1),
+      paidDate: paymentForm.paidDate || new Date().toISOString().slice(0, 10),
+      note: paymentForm.note,
+      createdAt: new Date().toISOString(),
+      createdBy: user?.email || "unknown",
+    };
+
+    let updatedSelected = null;
+    setShipments((prev) =>
+      prev.map((s) => {
+        if (s.id !== paymentForm.shipmentId) return s;
+        const updated = normalizeShipment({ ...s, payments: [newPayment, ...getPayments(s)] });
+        if (selectedShipment?.id === s.id) updatedSelected = updated;
+        return updated;
+      })
+    );
+    if (updatedSelected) setSelectedShipment(updatedSelected);
+    setPaymentForm({ ...emptyPaymentForm, fxRate: String(activeFxRate) });
+  }
+
+  function deletePayment(shipmentId, paymentId) {
+    if (!canManagePayments) {
+      alert("Only admin can delete payments.");
+      return;
+    }
+    if (!confirm("Delete this payment record?")) return;
+
+    let updatedSelected = null;
+    setShipments((prev) =>
+      prev.map((s) => {
+        if (s.id !== shipmentId) return s;
+        const updated = normalizeShipment({ ...s, payments: getPayments(s).filter((payment) => payment.id !== paymentId) });
+        if (selectedShipment?.id === s.id) updatedSelected = updated;
+        return updated;
+      })
+    );
+    if (updatedSelected) setSelectedShipment(updatedSelected);
   }
 
   function deleteShipment(id) {
@@ -1398,6 +1532,7 @@ function importLocalBackup(event) {
           {canEditCore && <button className={tab === "booking" ? "active" : ""} onClick={() => setTab("booking")}>+ Booking</button>}
           <button className={tab === "transport" ? "active" : ""} onClick={() => setTab("transport")}>🚚 Local Transport</button>
           {canSeeFinance && <button className={tab === "expenses" ? "active" : ""} onClick={() => setTab("expenses")}>💸 Expenses</button>}
+          {canSeeFinance && <button className={tab === "payments" ? "active" : ""} onClick={() => setTab("payments")}>💳 Payments</button>}
           {canSeeFinance && <button className={tab === "exchange" ? "active" : ""} onClick={() => setTab("exchange")}>💱 Exchange Rate</button>}
           <button className={tab === "ports" ? "active" : ""} onClick={() => setTab("ports")}>⚓ Ports</button>
           <button className={tab === "reports" ? "active" : ""} onClick={() => setTab("reports")}>📊 Reports</button>
@@ -1526,6 +1661,7 @@ function importLocalBackup(event) {
                       <p><b>Gross Before Expenses:</b> {money(calcGrossProfit(selectedShipment, activeFxRate))}</p>
                       <p><b>Net After Expenses:</b> {money(calcNetProfit(selectedShipment, activeFxRate))}</p>
                     </div>
+                    <PaymentSummaryBox shipment={selectedShipment} exchangeRate={activeFxRate} />
                   </>
                 )}
 
@@ -1541,6 +1677,14 @@ function importLocalBackup(event) {
                     {getExpenses(selectedShipment).length === 0 && <p>No extra expenses.</p>}
                     {getExpenses(selectedShipment).map((e, i) => (
                       <p key={i}>{e.company || "No company"} - {e.type} - {e.description || "No description"} - {money(e.amountUsd)}</p>
+                    ))}
+
+                    <h3>Payment Records</h3>
+                    {getPayments(selectedShipment).length === 0 && <p>No payment records yet.</p>}
+                    {getPayments(selectedShipment).map((payment) => (
+                      <p key={payment.id}>
+                        {payment.paidDate || "No date"} - {payment.purchaseType} - {payment.company || "No company"} - {money(payment.amount, payment.currency || "USD")}
+                      </p>
                     ))}
                   </>
                 )}
@@ -1686,6 +1830,33 @@ function importLocalBackup(event) {
               </form>
             </div>
             <ExpenseList shipments={shipments} deleteExpense={deleteExpense} canEditCore={canEditCore} />
+          </section>
+        )}
+
+        {tab === "payments" && canSeeFinance && (
+          <section className="panel twoCols">
+            <div>
+              <h2>Payments & Purchases</h2>
+              <p className="smallText">Track what was paid to carriers, transport companies, suppliers, and what was collected from customers. Only admin can add or delete payment records.</p>
+              {canManagePayments ? (
+                <form onSubmit={addPaymentToShipment}>
+                  <div className="formGrid one">
+                    <FormField label="Shipment"><select value={paymentForm.shipmentId} onChange={(e) => updatePayment("shipmentId", e.target.value)}><option value="">Select Shipment</option>{shipments.map((s) => <option key={s.id} value={s.id}>{s.id} - {s.customer}</option>)}</select></FormField>
+                    <FormField label="Payment / Purchase Type"><select value={paymentForm.purchaseType} onChange={(e) => updatePayment("purchaseType", e.target.value)}><option value="Ocean Freight">Ocean Freight</option><option value="Local Transport">Local Transport</option><option value="Expense">Expense</option><option value="Customer Receipt">Customer Receipt</option><option value="Other">Other</option></select></FormField>
+                    <FormField label="Company / Party"><input value={paymentForm.company} onChange={(e) => updatePayment("company", e.target.value)} placeholder="Carrier, transport company, supplier, or customer" /></FormField>
+                    <FormField label="Amount"><input type="number" step="0.01" value={paymentForm.amount} onChange={(e) => updatePayment("amount", e.target.value)} /></FormField>
+                    <FormField label="Currency"><select value={paymentForm.currency} onChange={(e) => updatePayment("currency", e.target.value)}><option value="USD">USD</option><option value="TRY">TRY</option></select></FormField>
+                    <FormField label="FX Rate TRY/USD"><input type="number" step="0.0001" value={paymentForm.fxRate || activeFxRate} onChange={(e) => updatePayment("fxRate", e.target.value)} /></FormField>
+                    <FormField label="Payment Date"><input type="date" value={paymentForm.paidDate} onChange={(e) => updatePayment("paidDate", e.target.value)} /></FormField>
+                    <FormField label="Note"><input value={paymentForm.note} onChange={(e) => updatePayment("note", e.target.value)} /></FormField>
+                  </div>
+                  <button className="saveBtn" type="submit">Add Payment Record</button>
+                </form>
+              ) : (
+                <div className="note"><p>You can view payments, but only admin can add or delete payment records.</p></div>
+              )}
+            </div>
+            <PaymentsList shipments={shipments} exchangeRate={activeFxRate} canManagePayments={canManagePayments} deletePayment={deletePayment} onOpen={openShipmentDetails} />
           </section>
         )}
 
@@ -1995,6 +2166,7 @@ function getTitle(tab) {
     booking: "New Booking",
     transport: "Local Transport",
     expenses: "Expenses",
+    payments: "Payments & Purchases",
     exchange: "Exchange Rate",
     ports: "Ports",
     reports: "Reports",
@@ -2142,6 +2314,65 @@ function ProfitCard({ shipment, exchangeRate }) {
       <p>Sale: {money(calcOceanSell(shipment))} | Cost: {money(calcTotalCostUsd(shipment, exchangeRate))} | Margin: {margin.toFixed(1)}%</p>
       <strong>{money(calcNetProfit(shipment, exchangeRate))}</strong>
       <div className="progress"><div style={{ width: `${Math.min(Math.max(margin, 3), 100)}%` }} /></div>
+    </div>
+  );
+}
+
+
+function PaymentSummaryBox({ shipment, exchangeRate }) {
+  const summary = getPaymentSummary(shipment, exchangeRate);
+  const rows = [
+    { type: "Customer Receipt", label: "Customer Collection", due: summary.receivableDue, paid: summary.receivablePaid, remaining: summary.receivableRemaining },
+    { type: "Ocean Freight", label: "Ocean Freight", due: getPurchaseDueUsd(shipment, "Ocean Freight", exchangeRate), paid: getPaidByTypeUsd(shipment, "Ocean Freight", exchangeRate), remaining: Math.max(getPurchaseDueUsd(shipment, "Ocean Freight", exchangeRate) - getPaidByTypeUsd(shipment, "Ocean Freight", exchangeRate), 0) },
+    { type: "Local Transport", label: "Local Transport", due: getPurchaseDueUsd(shipment, "Local Transport", exchangeRate), paid: getPaidByTypeUsd(shipment, "Local Transport", exchangeRate), remaining: Math.max(getPurchaseDueUsd(shipment, "Local Transport", exchangeRate) - getPaidByTypeUsd(shipment, "Local Transport", exchangeRate), 0) },
+    { type: "Expense", label: "Expenses", due: getPurchaseDueUsd(shipment, "Expense", exchangeRate), paid: getPaidByTypeUsd(shipment, "Expense", exchangeRate), remaining: Math.max(getPurchaseDueUsd(shipment, "Expense", exchangeRate) - getPaidByTypeUsd(shipment, "Expense", exchangeRate), 0) },
+  ];
+
+  return (
+    <div className="note mt">
+      <h3>Payments Status</h3>
+      <div className="detailGrid">
+        <p><b>Total Payables Paid:</b> {money(summary.payablePaid)}</p>
+        <p><b>Total Payables Remaining:</b> {money(summary.payableRemaining)}</p>
+        <p><b>Customer Collected:</b> {money(summary.receivablePaid)}</p>
+        <p><b>Customer Remaining:</b> {money(summary.receivableRemaining)}</p>
+      </div>
+      {rows.map((row) => (
+        <div className="transportLine" key={row.type}>
+          <span>{row.label} — Due {money(row.due)} / Paid {money(row.paid)} / Remaining {money(row.remaining)}</span>
+          <b>{getPaymentStatusLabel(shipment, row.type, exchangeRate)}</b>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PaymentsList({ shipments, exchangeRate, canManagePayments, deletePayment, onOpen }) {
+  return (
+    <div className="note">
+      <h3>Payments Overview</h3>
+      <div className="miniList">
+        {shipments.map((shipment) => {
+          const summary = getPaymentSummary(shipment, exchangeRate);
+          return (
+            <div className="miniCard" key={shipment.id}>
+              <b>{shipment.id} - {shipment.customer}</b>
+              <p>Payables paid: {money(summary.payablePaid)} / remaining: {money(summary.payableRemaining)}</p>
+              <p>Customer collected: {money(summary.receivablePaid)} / remaining: {money(summary.receivableRemaining)}</p>
+              <div className="actions mt">
+                <button className="ghostBtn" onClick={() => onOpen(shipment)}>Open Shipment</button>
+              </div>
+              {getPayments(shipment).length === 0 && <p>No payment records.</p>}
+              {getPayments(shipment).map((payment) => (
+                <div className="transportLine" key={payment.id}>
+                  <span>{payment.paidDate} - {payment.purchaseType} - {payment.company || "No company"} - {money(payment.amount, payment.currency || "USD")}</span>
+                  {canManagePayments && <button className="dangerBtn" onClick={() => deletePayment(shipment.id, payment.id)}>Delete</button>}
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
