@@ -1,4 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import Login from "./Login";
 import { supabase } from "./supabase";
 
@@ -230,6 +233,17 @@ const emptyExpenseForm = {
   amountUsd: "",
 };
 
+const emptyPaymentForm = {
+  shipmentId: "",
+  purchaseType: "Ocean Freight",
+  company: "",
+  amount: "",
+  currency: "USD",
+  fxRate: "",
+  paidDate: new Date().toISOString().slice(0, 10),
+  note: "",
+};
+
 const emptyEditForm = {
   id: "",
   customer: "",
@@ -277,6 +291,10 @@ function getExpenses(shipment) {
   return Array.isArray(shipment.expenses) ? shipment.expenses : [];
 }
 
+function getPayments(shipment) {
+  return Array.isArray(shipment.payments) ? shipment.payments : [];
+}
+
 function calcOceanBuy(shipment) {
   return Number(shipment.buyUsd || 0) * Number(shipment.qty || 0);
 }
@@ -299,6 +317,56 @@ function calcTransportTry(shipment) {
 
 function calcExpensesUsd(shipment) {
   return getExpenses(shipment).reduce((sum, e) => sum + Number(e.amountUsd || 0), 0);
+}
+
+function getPaymentRate(payment, shipment, exchangeRate) {
+  return Number(payment.fxRate || shipment?.fx || exchangeRate || 1) || 1;
+}
+
+function paymentAmountUsd(payment, shipment, exchangeRate) {
+  const amount = Number(payment.amount || 0);
+  if ((payment.currency || "USD") === "TRY") return amount / getPaymentRate(payment, shipment, exchangeRate);
+  return amount;
+}
+
+function getPurchaseDueUsd(shipment, purchaseType, exchangeRate) {
+  if (purchaseType === "Customer Receipt") return calcOceanSell(shipment);
+  if (purchaseType === "Ocean Freight") return calcOceanBuy(shipment);
+  if (purchaseType === "Local Transport") return calcTransportTry(shipment) / getRate(shipment, exchangeRate);
+  if (purchaseType === "Expense") return calcExpensesUsd(shipment);
+  return 0;
+}
+
+function getPaidByTypeUsd(shipment, purchaseType, exchangeRate) {
+  return getPayments(shipment)
+    .filter((payment) => payment.purchaseType === purchaseType)
+    .reduce((sum, payment) => sum + paymentAmountUsd(payment, shipment, exchangeRate), 0);
+}
+
+function getPaymentStatusLabel(shipment, purchaseType, exchangeRate) {
+  const due = getPurchaseDueUsd(shipment, purchaseType, exchangeRate);
+  const paid = getPaidByTypeUsd(shipment, purchaseType, exchangeRate);
+  if (!due) return paid ? "Paid" : "No Due";
+  if (paid <= 0) return "Unpaid";
+  if (paid + 0.01 >= due) return "Paid";
+  return "Partially Paid";
+}
+
+function getPaymentSummary(shipment, exchangeRate) {
+  const payableTypes = ["Ocean Freight", "Local Transport", "Expense"];
+  const payableDue = payableTypes.reduce((sum, type) => sum + getPurchaseDueUsd(shipment, type, exchangeRate), 0);
+  const payablePaid = payableTypes.reduce((sum, type) => sum + getPaidByTypeUsd(shipment, type, exchangeRate), 0);
+  const receivableDue = getPurchaseDueUsd(shipment, "Customer Receipt", exchangeRate);
+  const receivablePaid = getPaidByTypeUsd(shipment, "Customer Receipt", exchangeRate);
+
+  return {
+    payableDue,
+    payablePaid,
+    payableRemaining: Math.max(payableDue - payablePaid, 0),
+    receivableDue,
+    receivablePaid,
+    receivableRemaining: Math.max(receivableDue - receivablePaid, 0),
+  };
 }
 
 function getRate(shipment, exchangeRate) {
@@ -357,6 +425,35 @@ function formatMonthLabel(monthKey) {
   if (!monthKey) return "All dates";
   const [year, month] = monthKey.split("-");
   return month + "/" + year;
+}
+
+function dateOnly(dateValue) {
+  if (!dateValue) return "";
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+}
+
+function isDateInRange(dateValue, fromDate, toDate) {
+  const day = dateOnly(dateValue);
+  if (!day) return false;
+  if (fromDate && day < fromDate) return false;
+  if (toDate && day > toDate) return false;
+  return true;
+}
+
+function getDateRangeLabel(fromDate, toDate) {
+  if (fromDate && toDate) return `${fromDate} to ${toDate}`;
+  if (fromDate) return `From ${fromDate}`;
+  if (toDate) return `Until ${toDate}`;
+  return "All dates";
+}
+
+function safeFileName(value) {
+  return String(value || "all")
+    .replace(/[^a-z0-9]+/gi, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase() || "all";
 }
 
 function getDaysLeft(dateValue) {
@@ -420,6 +517,7 @@ function normalizeShipment(shipment) {
     paymentStatus: shipment.paymentStatus || "Unpaid",
     transports: getTransports(shipment),
     expenses: getExpenses(shipment),
+    payments: getPayments(shipment),
   };
 }
 
@@ -511,6 +609,7 @@ export default function App() {
   const [bookingForm, setBookingForm] = useState(emptyBookingForm);
   const [transportForm, setTransportForm] = useState(emptyTransportForm);
   const [expenseForm, setExpenseForm] = useState(emptyExpenseForm);
+  const [paymentForm, setPaymentForm] = useState(emptyPaymentForm);
   const [editForm, setEditForm] = useState(emptyEditForm);
   const [isEditing, setIsEditing] = useState(false);
   const [saveStatus, setSaveStatus] = useState("Saved automatically");
@@ -520,11 +619,14 @@ export default function App() {
   const [supplierForm, setSupplierForm] = useState(emptySupplierForm);
   const [portForm, setPortForm] = useState(emptyPortForm);
   const [onlineDataLoaded, setOnlineDataLoaded] = useState(false);
-  const [reportMonth, setReportMonth] = useState(getCurrentMonthKey());
+  const [reportFromDate, setReportFromDate] = useState("");
+  const [reportToDate, setReportToDate] = useState("");
+  const [clientReportCustomer, setClientReportCustomer] = useState("all");
 
   const role = profile?.role || "viewer";
   const canSeeFinance = role === "admin" || role === "partner";
   const canEditCore = role === "admin" || role === "partner";
+  const canManagePayments = role === "admin";
   const canEditOperation = canEditCore || role === "operation";
   const activeFxRate = Number(fxSettings.mode === "auto" ? fxSettings.autoRate : fxSettings.manualRate) || 1;
 
@@ -698,9 +800,9 @@ export default function App() {
   }, [shipments, activeFxRate]);
 
   const reportData = useMemo(() => {
-    const monthShipments = shipments.filter((s) => getMonthKey(getShipmentReportDate(s)) === reportMonth);
+    const selectedShipments = shipments.filter((s) => isDateInRange(getShipmentReportDate(s), reportFromDate, reportToDate));
 
-    const summary = monthShipments.reduce(
+    const summary = selectedShipments.reduce(
       (acc, s) => {
         acc.shipments += 1;
         acc.containers += Number(s.qty || 0);
@@ -717,7 +819,7 @@ export default function App() {
     const customersMap = new Map();
     const expenseCompaniesMap = new Map();
 
-    monthShipments.forEach((s) => {
+    selectedShipments.forEach((s) => {
       const customerKey = s.customer || "Unknown Customer";
       const customerRow = customersMap.get(customerKey) || { name: customerKey, shipments: 0, revenue: 0, netProfit: 0 };
       customerRow.shipments += 1;
@@ -735,221 +837,197 @@ export default function App() {
     });
 
     return {
-      shipments: monthShipments,
+      shipments: selectedShipments,
       summary,
       customers: Array.from(customersMap.values()).sort((a, b) => b.netProfit - a.netProfit),
       expenseCompanies: Array.from(expenseCompaniesMap.values()).sort((a, b) => b.amountUsd - a.amountUsd),
     };
-  }, [shipments, reportMonth, activeFxRate]);
+  }, [shipments, reportFromDate, reportToDate, activeFxRate]);
 
-  function getDetailedReportRows() {
-    return reportData.shipments.map((s) => {
-      const transportTry = calcTransportTry(s);
-      const expensesUsd = calcExpensesUsd(s);
-      const costsUsd = calcTotalCostUsd(s, activeFxRate);
-      const grossProfit = calcGrossProfit(s, activeFxRate);
-      const netProfit = calcNetProfit(s, activeFxRate);
-      const rate = getRate(s, activeFxRate);
-
-      return {
-        created: getShipmentReportDate(s) ? new Date(getShipmentReportDate(s)).toISOString().slice(0, 10) : "Not set",
-        shipment: s.id || "",
-        customer: s.customer || "",
-        company: s.line || "",
-        pol: s.pol || "",
-        pod: s.pod || "",
-        route: `${s.pol || ""} → ${s.pod || ""}`,
-        cargoType: s.cargoType || "",
-        containerType: s.containerType || "",
-        qty: Number(s.qty || 0),
-        status: s.status || "",
-        paymentStatus: s.paymentStatus || "",
-        bookingNo: s.bookingNo || "",
-        vessel: s.vessel || "",
-        cutOff: s.cutOff || "",
-        etd: s.etd || "",
-        eta: s.eta || "",
-        fx: rate,
-        buyUsd: calcOceanBuy(s),
-        sellUsd: calcOceanSell(s),
-        transportTry,
-        expensesUsd,
-        costsUsd,
-        grossProfit,
-        netProfit,
-        margin: calcMargin(s, activeFxRate),
-        transports: getTransports(s),
-        expenses: getExpenses(s),
-      };
-    });
+  function reportShipmentRows(rows = reportData.shipments) {
+    return rows.map((s) => ({
+      Date: getShipmentReportDate(s) ? new Date(getShipmentReportDate(s)).toISOString().slice(0, 10) : "Not set",
+      "Shipment ID": s.id,
+      Customer: s.customer || "",
+      Company: s.line || "",
+      POL: s.pol || "",
+      POD: s.pod || "",
+      Route: `${s.pol || ""} → ${s.pod || ""}`,
+      "Cargo Type": s.cargoType || "",
+      "Container Type": s.containerType || "",
+      Quantity: Number(s.qty || 0),
+      "Booking No": s.bookingNo || "Not set",
+      Vessel: s.vessel || "Not set",
+      "Cut-Off": s.cutOff || "",
+      ETD: s.etd || "",
+      ETA: s.eta || "",
+      Status: s.status || "",
+      Payment: s.paymentStatus || "",
+      "Revenue USD": Number(calcOceanSell(s).toFixed(2)),
+      "Costs USD": Number(calcTotalCostUsd(s, activeFxRate).toFixed(2)),
+      "Gross Profit USD": Number(calcGrossProfit(s, activeFxRate).toFixed(2)),
+      "Expenses USD": Number(calcExpensesUsd(s).toFixed(2)),
+      "Net Profit USD": Number(calcNetProfit(s, activeFxRate).toFixed(2)),
+      "Payables Paid USD": Number(getPaymentSummary(s, activeFxRate).payablePaid.toFixed(2)),
+      "Payables Remaining USD": Number(getPaymentSummary(s, activeFxRate).payableRemaining.toFixed(2)),
+      "Receivables Collected USD": Number(getPaymentSummary(s, activeFxRate).receivablePaid.toFixed(2)),
+      "Receivables Remaining USD": Number(getPaymentSummary(s, activeFxRate).receivableRemaining.toFixed(2)),
+      "FX Rate": Number(getRate(s, activeFxRate).toFixed(4)),
+    }));
   }
 
-  function exportMonthlyReportExcel() {
-    if (!canSeeFinance) {
-      alert("You do not have permission to export financial reports.");
-      return;
-    }
+  function customerShipmentRows(rows) {
+    return rows.map((s) => ({
+      Date: getShipmentReportDate(s) ? new Date(getShipmentReportDate(s)).toISOString().slice(0, 10) : "Not set",
+      "Shipment ID": s.id,
+      Customer: s.customer || "",
+      Carrier: s.line || "",
+      POL: s.pol || "",
+      POD: s.pod || "",
+      Route: `${s.pol || ""} → ${s.pod || ""}`,
+      "Cargo Type": s.cargoType || "",
+      "Container Type": s.containerType || "",
+      Quantity: Number(s.qty || 0),
+      "Booking No": s.bookingNo || "Not set",
+      Vessel: s.vessel || "Not set",
+      "Cut-Off": s.cutOff || "",
+      ETD: s.etd || "",
+      ETA: s.eta || "",
+      Status: s.status || "",
+      Payment: s.paymentStatus || "",
+      "Customer Amount USD": Number(calcOceanSell(s).toFixed(2)),
+    }));
+  }
 
-    const rows = getDetailedReportRows();
-    const headers = [
-      "Created", "Shipment", "Customer", "Company", "POL", "POD", "Cargo Type", "Container Type", "Qty",
-      "Status", "Payment", "Booking No", "Vessel", "Cut-Off", "ETD", "ETA", "FX",
-      "Buy USD", "Sell USD", "Transport TRY", "Expenses USD", "Total Cost USD", "Gross Profit USD", "Net Profit USD", "Margin %"
-    ];
-
-    const escapeCsv = (value) => {
-      const text = String(value ?? "");
-      return `"${text.replace(/"/g, '""')}"`;
-    };
-
+  function exportDetailedReportExcel() {
+    const wb = XLSX.utils.book_new();
     const summaryRows = [
-      ["Freight OS Detailed Monthly Report"],
-      ["Month", formatMonthLabel(reportMonth)],
-      ["Shipments", reportData.summary.shipments],
-      ["Containers / Units", reportData.summary.containers],
-      ["Revenue USD", reportData.summary.revenue],
-      ["Total Costs USD", reportData.summary.costs],
-      ["Gross Profit USD", reportData.summary.grossProfit],
-      ["Expenses USD", reportData.summary.expenses],
-      ["Net Profit USD", reportData.summary.netProfit],
-      [],
+      { Metric: "Date Range", Value: getDateRangeLabel(reportFromDate, reportToDate) },
+      { Metric: "Shipments", Value: reportData.summary.shipments },
+      { Metric: "Units / Containers", Value: reportData.summary.containers },
+      { Metric: "Revenue USD", Value: Number(reportData.summary.revenue.toFixed(2)) },
+      { Metric: "Total Costs USD", Value: Number(reportData.summary.costs.toFixed(2)) },
+      { Metric: "Gross Profit USD", Value: Number(reportData.summary.grossProfit.toFixed(2)) },
+      { Metric: "Total Expenses USD", Value: Number(reportData.summary.expenses.toFixed(2)) },
+      { Metric: "Net Profit USD", Value: Number(reportData.summary.netProfit.toFixed(2)) },
     ];
-
-    const shipmentRows = rows.map((row) => [
-      row.created, row.shipment, row.customer, row.company, row.pol, row.pod, row.cargoType, row.containerType, row.qty,
-      row.status, row.paymentStatus, row.bookingNo, row.vessel, row.cutOff, row.etd, row.eta, row.fx,
-      row.buyUsd, row.sellUsd, row.transportTry, row.expensesUsd, row.costsUsd, row.grossProfit, row.netProfit, row.margin.toFixed(2),
-    ]);
-
-    const customerRows = [
-      [],
-      ["Profit by Customer"],
-      ["Customer", "Shipments", "Revenue USD", "Net Profit USD"],
-      ...reportData.customers.map((row) => [row.name, row.shipments, row.revenue, row.netProfit]),
-    ];
-
-    const expenseRows = [
-      [],
-      ["Expenses by Company"],
-      ["Company", "Expense Count", "Amount USD"],
-      ...reportData.expenseCompanies.map((row) => [row.company, row.count, row.amountUsd]),
-    ];
-
-    const csvContent = [
-      ...summaryRows,
-      headers,
-      ...shipmentRows,
-      ...customerRows,
-      ...expenseRows,
-    ].map((row) => row.map(escapeCsv).join(",")).join("\n");
-
-    const blob = new Blob(["\ufeff" + csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `freight-os-detailed-report-${reportMonth || "all"}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+    const customerRows = reportData.customers.map((row) => ({
+      Customer: row.name,
+      Shipments: row.shipments,
+      "Revenue USD": Number(row.revenue.toFixed(2)),
+      "Net Profit USD": Number(row.netProfit.toFixed(2)),
+    }));
+    const expenseRows = reportData.expenseCompanies.map((row) => ({
+      Company: row.company,
+      "Expense Count": row.count,
+      "Amount USD": Number(row.amountUsd.toFixed(2)),
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), "Summary");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(reportShipmentRows()), "Shipments");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(customerRows), "Profit by Customer");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(expenseRows), "Expenses by Company");
+    XLSX.writeFile(wb, `freight-os-detailed-report-${safeFileName(getDateRangeLabel(reportFromDate, reportToDate))}.xlsx`);
   }
 
-  function exportMonthlyReportPdf() {
-    if (!canSeeFinance) {
-      alert("You do not have permission to export financial reports.");
+  function exportDetailedReportPdf() {
+    const doc = new jsPDF({ orientation: "landscape" });
+    doc.setFontSize(16);
+    doc.text("Freight OS - Detailed Report", 14, 16);
+    doc.setFontSize(10);
+    doc.text(`Date Range: ${getDateRangeLabel(reportFromDate, reportToDate)} | Exported: ${new Date().toLocaleString()}`, 14, 24);
+    autoTable(doc, {
+      startY: 30,
+      head: [["Shipments", "Units", "Revenue", "Costs", "Gross", "Expenses", "Net"]],
+      body: [[
+        reportData.summary.shipments,
+        reportData.summary.containers,
+        money(reportData.summary.revenue),
+        money(reportData.summary.costs),
+        money(reportData.summary.grossProfit),
+        money(reportData.summary.expenses),
+        money(reportData.summary.netProfit),
+      ]],
+    });
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 8,
+      head: [["Date", "Shipment", "Customer", "Company", "Route", "Status", "Revenue", "Costs", "Net"]],
+      body: reportData.shipments.map((s) => [
+        getShipmentReportDate(s) ? new Date(getShipmentReportDate(s)).toISOString().slice(0, 10) : "Not set",
+        s.id,
+        s.customer,
+        s.line,
+        `${s.pol} → ${s.pod}`,
+        s.status,
+        money(calcOceanSell(s)),
+        money(calcTotalCostUsd(s, activeFxRate)),
+        money(calcNetProfit(s, activeFxRate)),
+      ]),
+      styles: { fontSize: 8 },
+      headStyles: { fontSize: 8 },
+    });
+    doc.save(`freight-os-detailed-report-${safeFileName(getDateRangeLabel(reportFromDate, reportToDate))}.pdf`);
+  }
+
+  function getClientReportShipments() {
+    return reportData.shipments.filter((s) => clientReportCustomer === "all" || s.customer === clientReportCustomer);
+  }
+
+  function exportClientReportExcel() {
+    const rows = customerShipmentRows(getClientReportShipments());
+    if (!rows.length) {
+      alert("No shipments found for this client and selected date range.");
       return;
     }
+    const customerName = clientReportCustomer === "all" ? "All Customers" : clientReportCustomer;
+    const summary = [
+      { Metric: "Customer", Value: customerName },
+      { Metric: "Date Range", Value: getDateRangeLabel(reportFromDate, reportToDate) },
+      { Metric: "Shipments", Value: rows.length },
+      { Metric: "Total Customer Amount USD", Value: rows.reduce((sum, r) => sum + Number(r["Customer Amount USD"] || 0), 0) },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), "Summary");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Client Shipments");
+    const safeName = safeFileName(customerName);
+    XLSX.writeFile(wb, `freight-os-client-report-${safeName}-${safeFileName(getDateRangeLabel(reportFromDate, reportToDate))}.xlsx`);
+  }
 
-    const rows = getDetailedReportRows();
-    const moneyText = (value, currency = "USD") => money(value, currency).replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const safe = (value) => String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-    const shipmentsHtml = rows.map((row) => `
-      <tr>
-        <td>${safe(row.created)}</td>
-        <td>${safe(row.shipment)}</td>
-        <td>${safe(row.customer)}</td>
-        <td>${safe(row.company)}</td>
-        <td>${safe(row.route)}</td>
-        <td>${safe(row.status)}</td>
-        <td>${row.qty}</td>
-        <td>${moneyText(row.sellUsd)}</td>
-        <td>${moneyText(row.costsUsd)}</td>
-        <td>${moneyText(row.netProfit)}</td>
-      </tr>
-    `).join("");
-
-    const customersHtml = reportData.customers.map((row) => `
-      <tr><td>${safe(row.name)}</td><td>${row.shipments}</td><td>${moneyText(row.revenue)}</td><td>${moneyText(row.netProfit)}</td></tr>
-    `).join("");
-
-    const expensesHtml = reportData.expenseCompanies.map((row) => `
-      <tr><td>${safe(row.company)}</td><td>${row.count}</td><td>${moneyText(row.amountUsd)}</td></tr>
-    `).join("");
-
-    const html = `
-      <!doctype html>
-      <html>
-        <head>
-          <title>Freight OS Report ${safe(reportMonth)}</title>
-          <style>
-            body { font-family: Arial, sans-serif; color: #111827; padding: 24px; }
-            h1, h2 { margin-bottom: 8px; }
-            .meta { color: #4b5563; margin-bottom: 18px; }
-            .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 18px 0; }
-            .box { border: 1px solid #d1d5db; border-radius: 10px; padding: 10px; }
-            .box b { display: block; margin-top: 6px; font-size: 18px; }
-            table { width: 100%; border-collapse: collapse; margin: 14px 0 24px; font-size: 11px; }
-            th, td { border: 1px solid #d1d5db; padding: 7px; text-align: left; }
-            th { background: #f3f4f6; }
-            @media print { button { display: none; } body { padding: 0; } }
-          </style>
-        </head>
-        <body>
-          <h1>Freight OS Detailed Monthly Report</h1>
-          <div class="meta">Month: ${safe(formatMonthLabel(reportMonth))} | Exported: ${new Date().toLocaleString()}</div>
-
-          <div class="summary">
-            <div class="box">Shipments <b>${reportData.summary.shipments}</b></div>
-            <div class="box">Revenue <b>${moneyText(reportData.summary.revenue)}</b></div>
-            <div class="box">Total Costs <b>${moneyText(reportData.summary.costs)}</b></div>
-            <div class="box">Net Profit <b>${moneyText(reportData.summary.netProfit)}</b></div>
-          </div>
-
-          <h2>Shipment Details</h2>
-          <table>
-            <thead>
-              <tr><th>Created</th><th>Shipment</th><th>Customer</th><th>Company</th><th>Route</th><th>Status</th><th>Qty</th><th>Revenue</th><th>Costs</th><th>Net</th></tr>
-            </thead>
-            <tbody>${shipmentsHtml || '<tr><td colspan="10">No shipments for this month.</td></tr>'}</tbody>
-          </table>
-
-          <h2>Profit by Customer</h2>
-          <table>
-            <thead><tr><th>Customer</th><th>Shipments</th><th>Revenue</th><th>Net Profit</th></tr></thead>
-            <tbody>${customersHtml || '<tr><td colspan="4">No customer data for this month.</td></tr>'}</tbody>
-          </table>
-
-          <h2>Expenses by Company</h2>
-          <table>
-            <thead><tr><th>Company</th><th>Expense Count</th><th>Amount USD</th></tr></thead>
-            <tbody>${expensesHtml || '<tr><td colspan="3">No expenses for this month.</td></tr>'}</tbody>
-          </table>
-
-          <button onclick="window.print()">Print / Save as PDF</button>
-          <script>window.onload = () => setTimeout(() => window.print(), 400);</script>
-        </body>
-      </html>
-    `;
-
-    const reportWindow = window.open("", "_blank");
-    if (!reportWindow) {
-      alert("Please allow popups to export PDF.");
+  function exportClientReportPdf() {
+    const rows = getClientReportShipments();
+    if (!rows.length) {
+      alert("No shipments found for this client and selected date range.");
       return;
     }
-    reportWindow.document.open();
-    reportWindow.document.write(html);
-    reportWindow.document.close();
+    const customerName = clientReportCustomer === "all" ? "All Customers" : clientReportCustomer;
+    const doc = new jsPDF({ orientation: "landscape" });
+    doc.setFontSize(16);
+    doc.text(`Shipment Report - ${customerName}`, 14, 16);
+    doc.setFontSize(10);
+    doc.text(`Date Range: ${getDateRangeLabel(reportFromDate, reportToDate)} | Exported: ${new Date().toLocaleString()}`, 14, 24);
+    autoTable(doc, {
+      startY: 30,
+      head: [["Date", "Shipment", "Carrier", "Route", "Cargo", "Qty", "Booking", "Vessel", "Cut-Off", "ETD", "ETA", "Status", "Payment", "Amount"]],
+      body: rows.map((s) => [
+        getShipmentReportDate(s) ? new Date(getShipmentReportDate(s)).toISOString().slice(0, 10) : "Not set",
+        s.id,
+        s.line || "",
+        `${s.pol || ""} → ${s.pod || ""}`,
+        `${s.cargoType || ""} / ${s.containerType || ""}`,
+        Number(s.qty || 0),
+        s.bookingNo || "Not set",
+        s.vessel || "Not set",
+        s.cutOff || "",
+        s.etd || "",
+        s.eta || "",
+        s.status || "",
+        s.paymentStatus || "",
+        money(calcOceanSell(s)),
+      ]),
+      styles: { fontSize: 7 },
+      headStyles: { fontSize: 7 },
+    });
+    const safeName = safeFileName(customerName);
+    doc.save(`freight-os-client-report-${safeName}-${safeFileName(getDateRangeLabel(reportFromDate, reportToDate))}.pdf`);
   }
 
   function updateBooking(field, value) {
@@ -962,6 +1040,10 @@ export default function App() {
 
   function updateExpense(field, value) {
     setExpenseForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function updatePayment(field, value) {
+    setPaymentForm((prev) => ({ ...prev, [field]: value }));
   }
 
   function updateEdit(field, value) {
@@ -1131,6 +1213,7 @@ function addShipmentFromForm(e) {
       paymentStatus: bookingForm.paymentStatus,
       transports: [],
       expenses: [],
+      payments: [],
     });
 
     setShipments((prev) => dedupeShipments([newShipment, ...prev]));
@@ -1189,6 +1272,63 @@ function addShipmentFromForm(e) {
     );
 
     setExpenseForm(emptyExpenseForm);
+  }
+
+  function addPaymentToShipment(e) {
+    e.preventDefault();
+    if (!canManagePayments) {
+      alert("Only admin can add payments.");
+      return;
+    }
+    if (!paymentForm.shipmentId || !paymentForm.purchaseType || !paymentForm.amount || !paymentForm.currency) {
+      alert("Please select shipment, payment type, currency, and amount.");
+      return;
+    }
+
+    const targetShipment = shipments.find((s) => s.id === paymentForm.shipmentId);
+    const newPayment = {
+      id: `PAY-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      purchaseType: paymentForm.purchaseType,
+      company: paymentForm.company || (paymentForm.purchaseType === "Customer Receipt" ? targetShipment?.customer : targetShipment?.line) || "Not set",
+      amount: Number(paymentForm.amount || 0),
+      currency: paymentForm.currency || "USD",
+      fxRate: Number(paymentForm.fxRate || targetShipment?.fx || activeFxRate || 1),
+      paidDate: paymentForm.paidDate || new Date().toISOString().slice(0, 10),
+      note: paymentForm.note,
+      createdAt: new Date().toISOString(),
+      createdBy: user?.email || "unknown",
+    };
+
+    let updatedSelected = null;
+    setShipments((prev) =>
+      prev.map((s) => {
+        if (s.id !== paymentForm.shipmentId) return s;
+        const updated = normalizeShipment({ ...s, payments: [newPayment, ...getPayments(s)] });
+        if (selectedShipment?.id === s.id) updatedSelected = updated;
+        return updated;
+      })
+    );
+    if (updatedSelected) setSelectedShipment(updatedSelected);
+    setPaymentForm({ ...emptyPaymentForm, fxRate: String(activeFxRate) });
+  }
+
+  function deletePayment(shipmentId, paymentId) {
+    if (!canManagePayments) {
+      alert("Only admin can delete payments.");
+      return;
+    }
+    if (!confirm("Delete this payment record?")) return;
+
+    let updatedSelected = null;
+    setShipments((prev) =>
+      prev.map((s) => {
+        if (s.id !== shipmentId) return s;
+        const updated = normalizeShipment({ ...s, payments: getPayments(s).filter((payment) => payment.id !== paymentId) });
+        if (selectedShipment?.id === s.id) updatedSelected = updated;
+        return updated;
+      })
+    );
+    if (updatedSelected) setSelectedShipment(updatedSelected);
   }
 
   function deleteShipment(id) {
@@ -1392,6 +1532,7 @@ function importLocalBackup(event) {
           {canEditCore && <button className={tab === "booking" ? "active" : ""} onClick={() => setTab("booking")}>+ Booking</button>}
           <button className={tab === "transport" ? "active" : ""} onClick={() => setTab("transport")}>🚚 Local Transport</button>
           {canSeeFinance && <button className={tab === "expenses" ? "active" : ""} onClick={() => setTab("expenses")}>💸 Expenses</button>}
+          {canSeeFinance && <button className={tab === "payments" ? "active" : ""} onClick={() => setTab("payments")}>💳 Payments</button>}
           {canSeeFinance && <button className={tab === "exchange" ? "active" : ""} onClick={() => setTab("exchange")}>💱 Exchange Rate</button>}
           <button className={tab === "ports" ? "active" : ""} onClick={() => setTab("ports")}>⚓ Ports</button>
           <button className={tab === "reports" ? "active" : ""} onClick={() => setTab("reports")}>📊 Reports</button>
@@ -1521,6 +1662,7 @@ function importLocalBackup(event) {
                       <p><b>Gross Before Expenses:</b> {money(calcGrossProfit(selectedShipment, activeFxRate))}</p>
                       <p><b>Net After Expenses:</b> {money(calcNetProfit(selectedShipment, activeFxRate))}</p>
                     </div>
+                    <PaymentSummaryBox shipment={selectedShipment} exchangeRate={activeFxRate} />
                   </>
                 )}
 
@@ -1536,6 +1678,14 @@ function importLocalBackup(event) {
                     {getExpenses(selectedShipment).length === 0 && <p>No extra expenses.</p>}
                     {getExpenses(selectedShipment).map((e, i) => (
                       <p key={i}>{e.company || "No company"} - {e.type} - {e.description || "No description"} - {money(e.amountUsd)}</p>
+                    ))}
+
+                    <h3>Payment Records</h3>
+                    {getPayments(selectedShipment).length === 0 && <p>No payment records yet.</p>}
+                    {getPayments(selectedShipment).map((payment) => (
+                      <p key={payment.id}>
+                        {payment.paidDate || "No date"} - {payment.purchaseType} - {payment.company || "No company"} - {money(payment.amount, payment.currency || "USD")}
+                      </p>
                     ))}
                   </>
                 )}
@@ -1683,6 +1833,33 @@ function importLocalBackup(event) {
               </form>
             </div>
             <ExpenseList shipments={shipments} deleteExpense={deleteExpense} canEditCore={canEditCore} />
+          </section>
+        )}
+
+        {tab === "payments" && canSeeFinance && (
+          <section className="panel twoCols">
+            <div>
+              <h2>Payments & Purchases</h2>
+              <p className="smallText">Track what was paid to carriers, transport companies, suppliers, and what was collected from customers. Only admin can add or delete payment records.</p>
+              {canManagePayments ? (
+                <form onSubmit={addPaymentToShipment}>
+                  <div className="formGrid one">
+                    <FormField label="Shipment"><select value={paymentForm.shipmentId} onChange={(e) => updatePayment("shipmentId", e.target.value)}><option value="">Select Shipment</option>{shipments.map((s) => <option key={s.id} value={s.id}>{s.id} - {s.customer}</option>)}</select></FormField>
+                    <FormField label="Payment / Purchase Type"><select value={paymentForm.purchaseType} onChange={(e) => updatePayment("purchaseType", e.target.value)}><option value="Ocean Freight">Ocean Freight</option><option value="Local Transport">Local Transport</option><option value="Expense">Expense</option><option value="Customer Receipt">Customer Receipt</option><option value="Other">Other</option></select></FormField>
+                    <FormField label="Company / Party"><input value={paymentForm.company} onChange={(e) => updatePayment("company", e.target.value)} placeholder="Carrier, transport company, supplier, or customer" /></FormField>
+                    <FormField label="Amount"><input type="number" step="0.01" value={paymentForm.amount} onChange={(e) => updatePayment("amount", e.target.value)} /></FormField>
+                    <FormField label="Currency"><select value={paymentForm.currency} onChange={(e) => updatePayment("currency", e.target.value)}><option value="USD">USD</option><option value="TRY">TRY</option></select></FormField>
+                    <FormField label="FX Rate TRY/USD"><input type="number" step="0.0001" value={paymentForm.fxRate || activeFxRate} onChange={(e) => updatePayment("fxRate", e.target.value)} /></FormField>
+                    <FormField label="Payment Date"><input type="date" value={paymentForm.paidDate} onChange={(e) => updatePayment("paidDate", e.target.value)} /></FormField>
+                    <FormField label="Note"><input value={paymentForm.note} onChange={(e) => updatePayment("note", e.target.value)} /></FormField>
+                  </div>
+                  <button className="saveBtn" type="submit">Add Payment Record</button>
+                </form>
+              ) : (
+                <div className="note"><p>You can view payments, but only admin can add or delete payment records.</p></div>
+              )}
+            </div>
+            <PaymentsList shipments={shipments} exchangeRate={activeFxRate} canManagePayments={canManagePayments} deletePayment={deletePayment} onOpen={openShipmentDetails} />
           </section>
         )}
 
@@ -1854,19 +2031,23 @@ function importLocalBackup(event) {
           <section className="panel">
             <div className="panelHead">
               <div>
-                <h2>Monthly Reports</h2>
-                <p>Reports are based on the shipment creation date. Old shipments use ETA / ETD / Cut-Off as fallback.</p>
+                <h2>Detailed Reports</h2>
+                <p>Reports are based on the shipment creation date. Select From / To dates, or leave them empty for all dates. Old shipments use ETA / ETD / Cut-Off as fallback.</p>
               </div>
               <div className="actions">
-                <FormField label="Report Month">
-                  <input type="month" value={reportMonth} onChange={(e) => setReportMonth(e.target.value)} />
+                <FormField label="From Date">
+                  <input type="date" value={reportFromDate} onChange={(e) => setReportFromDate(e.target.value)} />
                 </FormField>
-                {canSeeFinance && <button className="saveBtn" onClick={exportMonthlyReportExcel}>Export Excel</button>}
-                {canSeeFinance && <button className="ghostBtn" onClick={exportMonthlyReportPdf}>Export PDF</button>}
+                <FormField label="To Date">
+                  <input type="date" value={reportToDate} onChange={(e) => setReportToDate(e.target.value)} />
+                </FormField>
+                <button className="ghostBtn" onClick={() => { setReportFromDate(""); setReportToDate(""); }}>All Dates</button>
+                {canSeeFinance && <button className="saveBtn" onClick={exportDetailedReportExcel}>Export Detailed Excel</button>}
+                {canSeeFinance && <button className="ghostBtn" onClick={exportDetailedReportPdf}>Export Detailed PDF</button>}
               </div>
             </div>
 
-            <h3>{formatMonthLabel(reportMonth)} Summary</h3>
+            <h3>{getDateRangeLabel(reportFromDate, reportToDate)} Summary</h3>
             <section className="stats">
               <Card icon="📋" title="Shipments" value={reportData.summary.shipments} />
               <Card icon="📦" title="Units / Containers" value={reportData.summary.containers} />
@@ -1886,7 +2067,7 @@ function importLocalBackup(event) {
             <div className="twoCols mt">
               <div className="note">
                 <h3>Profit by Customer</h3>
-                {reportData.customers.length === 0 && <p>No customer data for this month.</p>}
+                {reportData.customers.length === 0 && <p>No customer data for this date range.</p>}
                 {reportData.customers.map((row) => (
                   <div className="transportLine" key={row.name}>
                     <span>{row.name} — {row.shipments} shipments</span>
@@ -1897,13 +2078,29 @@ function importLocalBackup(event) {
 
               <div className="note">
                 <h3>Expenses by Company</h3>
-                {reportData.expenseCompanies.length === 0 && <p>No expenses for this month.</p>}
+                {reportData.expenseCompanies.length === 0 && <p>No expenses for this date range.</p>}
                 {reportData.expenseCompanies.map((row) => (
                   <div className="transportLine" key={row.company}>
                     <span>{row.company} — {row.count} expenses</span>
                     <b>{money(row.amountUsd)}</b>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            <div className="note mt">
+              <div className="panelHead">
+                <div>
+                  <h3>Client Shipment Report</h3>
+                  <p className="smallText">Customer-facing report: no buy costs, no internal expenses, and no profit.</p>
+                </div>
+                <div className="actions">
+                  <FormField label="Client">
+                    <CustomerSelect value={clientReportCustomer} customers={[{ id: "all", name: "all" }, ...customers]} onChange={setClientReportCustomer} />
+                  </FormField>
+                  <button className="saveBtn" onClick={exportClientReportExcel}>Export Client Excel</button>
+                  <button className="ghostBtn" onClick={exportClientReportPdf}>Export Client PDF</button>
+                </div>
               </div>
             </div>
 
@@ -1972,6 +2169,7 @@ function getTitle(tab) {
     booking: "New Booking",
     transport: "Local Transport",
     expenses: "Expenses",
+    payments: "Payments & Purchases",
     exchange: "Exchange Rate",
     ports: "Ports",
     reports: "Reports",
@@ -2119,6 +2317,65 @@ function ProfitCard({ shipment, exchangeRate }) {
       <p>Sale: {money(calcOceanSell(shipment))} | Cost: {money(calcTotalCostUsd(shipment, exchangeRate))} | Margin: {margin.toFixed(1)}%</p>
       <strong>{money(calcNetProfit(shipment, exchangeRate))}</strong>
       <div className="progress"><div style={{ width: `${Math.min(Math.max(margin, 3), 100)}%` }} /></div>
+    </div>
+  );
+}
+
+
+function PaymentSummaryBox({ shipment, exchangeRate }) {
+  const summary = getPaymentSummary(shipment, exchangeRate);
+  const rows = [
+    { type: "Customer Receipt", label: "Customer Collection", due: summary.receivableDue, paid: summary.receivablePaid, remaining: summary.receivableRemaining },
+    { type: "Ocean Freight", label: "Ocean Freight", due: getPurchaseDueUsd(shipment, "Ocean Freight", exchangeRate), paid: getPaidByTypeUsd(shipment, "Ocean Freight", exchangeRate), remaining: Math.max(getPurchaseDueUsd(shipment, "Ocean Freight", exchangeRate) - getPaidByTypeUsd(shipment, "Ocean Freight", exchangeRate), 0) },
+    { type: "Local Transport", label: "Local Transport", due: getPurchaseDueUsd(shipment, "Local Transport", exchangeRate), paid: getPaidByTypeUsd(shipment, "Local Transport", exchangeRate), remaining: Math.max(getPurchaseDueUsd(shipment, "Local Transport", exchangeRate) - getPaidByTypeUsd(shipment, "Local Transport", exchangeRate), 0) },
+    { type: "Expense", label: "Expenses", due: getPurchaseDueUsd(shipment, "Expense", exchangeRate), paid: getPaidByTypeUsd(shipment, "Expense", exchangeRate), remaining: Math.max(getPurchaseDueUsd(shipment, "Expense", exchangeRate) - getPaidByTypeUsd(shipment, "Expense", exchangeRate), 0) },
+  ];
+
+  return (
+    <div className="note mt">
+      <h3>Payments Status</h3>
+      <div className="detailGrid">
+        <p><b>Total Payables Paid:</b> {money(summary.payablePaid)}</p>
+        <p><b>Total Payables Remaining:</b> {money(summary.payableRemaining)}</p>
+        <p><b>Customer Collected:</b> {money(summary.receivablePaid)}</p>
+        <p><b>Customer Remaining:</b> {money(summary.receivableRemaining)}</p>
+      </div>
+      {rows.map((row) => (
+        <div className="transportLine" key={row.type}>
+          <span>{row.label} — Due {money(row.due)} / Paid {money(row.paid)} / Remaining {money(row.remaining)}</span>
+          <b>{getPaymentStatusLabel(shipment, row.type, exchangeRate)}</b>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PaymentsList({ shipments, exchangeRate, canManagePayments, deletePayment, onOpen }) {
+  return (
+    <div className="note">
+      <h3>Payments Overview</h3>
+      <div className="miniList">
+        {shipments.map((shipment) => {
+          const summary = getPaymentSummary(shipment, exchangeRate);
+          return (
+            <div className="miniCard" key={shipment.id}>
+              <b>{shipment.id} - {shipment.customer}</b>
+              <p>Payables paid: {money(summary.payablePaid)} / remaining: {money(summary.payableRemaining)}</p>
+              <p>Customer collected: {money(summary.receivablePaid)} / remaining: {money(summary.receivableRemaining)}</p>
+              <div className="actions mt">
+                <button className="ghostBtn" onClick={() => onOpen(shipment)}>Open Shipment</button>
+              </div>
+              {getPayments(shipment).length === 0 && <p>No payment records.</p>}
+              {getPayments(shipment).map((payment) => (
+                <div className="transportLine" key={payment.id}>
+                  <span>{payment.paidDate} - {payment.purchaseType} - {payment.company || "No company"} - {money(payment.amount, payment.currency || "USD")}</span>
+                  {canManagePayments && <button className="dangerBtn" onClick={() => deletePayment(shipment.id, payment.id)}>Delete</button>}
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
