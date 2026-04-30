@@ -833,6 +833,191 @@ function generateInvoicePdf(shipment, exchangeRate) {
 }
 
 
+function getReceiptNumber(payment) {
+  const year = new Date(payment?.paidDate || payment?.createdAt || Date.now()).getFullYear();
+  const raw = String(payment?.id || Date.now());
+  const match = raw.match(/PAY-(\d+)/);
+  const number = match ? match[1].slice(-6) : raw.replace(/\D/g, "").slice(-6) || String(Date.now()).slice(-6);
+  return `RCPT-${year}-${number.padStart(6, "0")}`;
+}
+
+function generateReceiptPdf(shipment, payment, exchangeRate) {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const receiptNo = getReceiptNumber(payment);
+  const receiptDate = payment?.paidDate || new Date().toISOString().slice(0, 10);
+  const bookingNo = shipment?.bookingNo && shipment.bookingNo !== "Not set" ? shipment.bookingNo : shipment?.id || "Not set";
+  const routeText = `${shipment?.pol || ""} to ${shipment?.pod || ""}`;
+  const paymentSummary = getPaymentSummary(shipment, exchangeRate);
+  const collectedUsd = paymentAmountUsd(payment, shipment, exchangeRate);
+  const invoiceAmount = calcOceanSell(shipment);
+  const totalCollected = paymentSummary.receivablePaid;
+  const remainingAmount = paymentSummary.receivableRemaining;
+
+  const dark = [14, 18, 22];
+  const text = [20, 24, 31];
+  const muted = [90, 100, 112];
+  const line = [210, 216, 224];
+  const light = [248, 250, 252];
+
+  const setRgb = (kind, color) => {
+    if (kind === "fill") doc.setFillColor(color[0], color[1], color[2]);
+    if (kind === "draw") doc.setDrawColor(color[0], color[1], color[2]);
+    if (kind === "text") doc.setTextColor(color[0], color[1], color[2]);
+  };
+
+  doc.setFillColor(255, 255, 255);
+  doc.rect(0, 0, 210, 297, "F");
+
+  try {
+    doc.addImage(FSC_LOGO_DATA_URL, "PNG", 13, 11, 36, 30);
+  } catch (error) {
+    console.warn("Logo could not be added to receipt:", error);
+  }
+
+  setRgb("draw", line);
+  doc.setLineWidth(0.4);
+  doc.line(55, 12, 55, 43);
+
+  setRgb("text", text);
+  doc.setFont(undefined, "bold");
+  doc.setFontSize(24);
+  doc.text(COMPANY_INFO.name, 61, 21);
+  doc.setFont(undefined, "normal");
+  doc.setFontSize(10);
+  doc.text(COMPANY_INFO.address, 61, 29);
+  doc.text(COMPANY_INFO.phone, 61, 36);
+
+  doc.setFont(undefined, "bold");
+  doc.setFontSize(25);
+  doc.text("RECEIPT", 195, 23, { align: "right" });
+  setRgb("draw", line);
+  doc.roundedRect(151, 29, 44, 10, 3, 3, "S");
+  doc.setFontSize(9);
+  doc.text(receiptNo, 173, 36, { align: "center" });
+
+  setRgb("draw", dark);
+  doc.setLineWidth(0.45);
+  doc.line(12, 52, 198, 52);
+
+  doc.setFont(undefined, "bold");
+  doc.setFontSize(12);
+  setRgb("text", text);
+  doc.text("RECEIVED FROM", 20, 66);
+  doc.setFontSize(15);
+  doc.text(shipment?.customer || "Customer", 20, 78);
+  setRgb("draw", line);
+  doc.setLineWidth(0.3);
+  doc.line(20, 82, 92, 82);
+  doc.setFont(undefined, "normal");
+  doc.setFontSize(10);
+  setRgb("text", muted);
+  doc.text(`Booking No: ${bookingNo}`, 20, 94);
+  doc.text(`Route: ${routeText}`, 20, 103);
+  doc.text(`Shipment: ${shipment?.id || "Not set"}`, 20, 112);
+
+  setRgb("text", text);
+  doc.setFont(undefined, "bold");
+  doc.setFontSize(12);
+  doc.text("RECEIPT DETAILS", 122, 66);
+
+  const details = [
+    ["Receipt No.", receiptNo],
+    ["Receipt Date", receiptDate],
+    ["Currency", payment?.currency || "USD"],
+    ["FX Rate", String(payment?.fxRate || shipment?.fx || exchangeRate || 1)],
+    ["Method / Note", payment?.note || "Not set"],
+  ];
+
+  doc.setFont(undefined, "normal");
+  doc.setFontSize(10);
+  let detailY = 76;
+  details.forEach(([label, value], index) => {
+    doc.text(label, 122, detailY + index * 8);
+    doc.text(":", 153, detailY + index * 8);
+    doc.text(String(value), 160, detailY + index * 8, { maxWidth: 36 });
+  });
+
+  setRgb("fill", dark);
+  doc.roundedRect(12, 128, 186, 38, 3, 3, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFont(undefined, "bold");
+  doc.setFontSize(12);
+  doc.text("Amount Received", 22, 143);
+  doc.setFontSize(24);
+  doc.text(money(payment?.amount || 0, payment?.currency || "USD"), 188, 146, { align: "right" });
+  doc.setFont(undefined, "normal");
+  doc.setFontSize(9);
+  doc.text(`Equivalent USD: ${money(collectedUsd)}`, 188, 156, { align: "right" });
+
+  autoTable(doc, {
+    startY: 182,
+    theme: "grid",
+    margin: { left: 12, right: 12 },
+    head: [["Description", "Booking No", "Date", "Amount"]],
+    body: [[
+      `Customer payment received for ${routeText}`,
+      bookingNo,
+      receiptDate,
+      money(payment?.amount || 0, payment?.currency || "USD"),
+    ]],
+    columnStyles: {
+      0: { cellWidth: 88 },
+      1: { cellWidth: 36 },
+      2: { cellWidth: 30, halign: "center" },
+      3: { cellWidth: 32, halign: "right" },
+    },
+    styles: { fontSize: 10, cellPadding: 4, lineColor: [220, 226, 232], lineWidth: 0.25 },
+    headStyles: { fillColor: dark, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 10 },
+    bodyStyles: { fillColor: [255, 255, 255], textColor: text },
+  });
+
+  const summaryY = 220;
+  setRgb("draw", line);
+  setRgb("fill", [255, 255, 255]);
+  doc.roundedRect(112, summaryY, 86, 42, 2.5, 2.5, "S");
+  setRgb("text", text);
+  doc.setFont(undefined, "normal");
+  doc.setFontSize(11);
+  doc.text("Invoice Amount", 120, summaryY + 11);
+  doc.text(money(invoiceAmount), 192, summaryY + 11, { align: "right" });
+  doc.text("Total Collected", 120, summaryY + 22);
+  doc.text(money(totalCollected), 192, summaryY + 22, { align: "right" });
+  setRgb("draw", dark);
+  doc.line(120, summaryY + 28, 192, summaryY + 28);
+  doc.setFont(undefined, "bold");
+  doc.setFontSize(13);
+  doc.text("Remaining", 120, summaryY + 37);
+  doc.text(money(remainingAmount), 192, summaryY + 37, { align: "right" });
+
+  setRgb("draw", line);
+  setRgb("fill", [255, 255, 255]);
+  doc.roundedRect(12, summaryY, 88, 42, 2.5, 2.5, "S");
+  setRgb("text", text);
+  doc.setFont(undefined, "bold");
+  doc.setFontSize(11);
+  doc.text("Received By", 20, summaryY + 12);
+  doc.setFont(undefined, "normal");
+  doc.setFontSize(10);
+  doc.text(COMPANY_INFO.name, 20, summaryY + 24);
+  setRgb("draw", line);
+  doc.line(20, summaryY + 34, 86, summaryY + 34);
+
+  setRgb("draw", line);
+  doc.setLineWidth(0.35);
+  doc.line(12, 277, 198, 277);
+  setRgb("fill", light);
+  doc.roundedRect(12, 280, 186, 10, 1.5, 1.5, "F");
+  setRgb("text", text);
+  doc.setFont(undefined, "bold");
+  doc.setFontSize(9);
+  doc.text(COMPANY_INFO.name, 62, 287, { align: "center" });
+  doc.text(COMPANY_INFO.phone, 105, 287, { align: "center" });
+  doc.text(COMPANY_INFO.address, 155, 287, { align: "center" });
+
+  doc.save(`${receiptNo}-${safeFileName(shipment?.customer)}.pdf`);
+}
+
+
 export default function App() {
   const [shipments, setShipments] = useState([]);
 
@@ -2724,7 +2909,10 @@ function ReceivablesList({ shipments, exchangeRate, canManagePayments, deletePay
           {receipts.map((payment) => (
             <div className="transportLine" key={payment.id}>
               <span>{payment.paidDate} — {money(payment.amount, payment.currency)} — {payment.note || "No note"}</span>
-              {canManagePayments && <button className="dangerBtn" onClick={() => deletePayment(shipment.id, payment.id)}>Delete</button>}
+              <div className="actions">
+                <button className="ghostBtn" onClick={() => generateReceiptPdf(shipment, payment, exchangeRate)}>Generate Receipt</button>
+                {canManagePayments && <button className="dangerBtn" onClick={() => deletePayment(shipment.id, payment.id)}>Delete</button>}
+              </div>
             </div>
           ))}
         </div>
