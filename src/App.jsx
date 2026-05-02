@@ -1332,6 +1332,8 @@ export default function App() {
       .sort((a, b) => String(a.dueDate || "9999-12-31").localeCompare(String(b.dueDate || "9999-12-31")));
   }, [shipments, taskFilter]);
 
+  const selectedTaskShipment = useMemo(() => shipments.find((shipment) => shipment.id === taskForm.shipmentId) || null, [shipments, taskForm.shipmentId]);
+
   const dashboardCharts = useMemo(() => {
     const monthlyProfitMap = new Map();
     const monthlyCollectionsMap = new Map();
@@ -1621,7 +1623,52 @@ export default function App() {
     setReceivableForm((prev) => ({ ...prev, [field]: value }));
   }
 
+  function getTaskAutoData(shipment, taskType = "General") {
+    const today = new Date().toISOString().slice(0, 10);
+    if (!shipment) {
+      return { dueDate: today, title: "", note: "" };
+    }
+
+    const booking = shipment.bookingNo || shipment.booking || shipment.id || "Not set";
+    const customer = shipment.customer || shipment.customerName || "Not set";
+    const route = `${shipment.pol || ""} → ${shipment.pod || ""}`;
+
+    const dateByType = {
+      "Cut-Off": shipment.cutOff || today,
+      ETD: shipment.etd || shipment.loadingDate || today,
+      Documents: shipment.eta || shipment.arrivalDate || today,
+      Payment: today,
+      "Customer Follow-up": today,
+      General: today,
+    };
+
+    const titleByType = {
+      "Cut-Off": `Cut-Off reminder - ${booking}`,
+      ETD: `ETD / Loading reminder - ${booking}`,
+      Documents: `Documents follow-up - ${booking}`,
+      Payment: `Payment follow-up - ${booking}`,
+      "Customer Follow-up": `Customer follow-up - ${customer}`,
+      General: `Follow-up - ${booking}`,
+    };
+
+    const dueDate = dateByType[taskType] || today;
+    const title = titleByType[taskType] || titleByType.General;
+    const note = `${taskType} task for ${customer} | Booking: ${booking} | Route: ${route}${dueDate ? ` | Date: ${dueDate}` : ""}`;
+
+    return { dueDate, title, note };
+  }
+
   function updateTask(field, value) {
+    if (field === "shipmentId" || field === "taskType") {
+      setTaskForm((prev) => {
+        const next = { ...prev, [field]: value };
+        const selectedShipment = shipments.find((shipment) => shipment.id === next.shipmentId);
+        const autoData = getTaskAutoData(selectedShipment, next.taskType || "General");
+        return { ...next, ...autoData };
+      });
+      return;
+    }
+
     setTaskForm((prev) => ({ ...prev, [field]: value }));
   }
 
@@ -2709,8 +2756,11 @@ function importLocalBackup(event) {
               <form onSubmit={addTaskToShipment} className="editBox">
                 <div className="formGrid">
                   <FormField label="Shipment"><select value={taskForm.shipmentId} onChange={(e) => updateTask("shipmentId", e.target.value)}><option value="">Select Shipment</option>{shipments.map((s) => <option key={s.id} value={s.id}>{s.id} - {s.customer}</option>)}</select></FormField>
-                  <FormField label="Task Title"><input value={taskForm.title} onChange={(e) => updateTask("title", e.target.value)} placeholder="Example: Follow up cut-off" /></FormField>
+                  <FormField label="Customer"><input value={selectedTaskShipment?.customer || ""} readOnly placeholder="Auto-filled from shipment" /></FormField>
+                  <FormField label="Booking No"><input value={selectedTaskShipment?.bookingNo || ""} readOnly placeholder="Auto-filled from shipment" /></FormField>
+                  <FormField label="Route"><input value={selectedTaskShipment ? `${selectedTaskShipment.pol || ""} → ${selectedTaskShipment.pod || ""}` : ""} readOnly placeholder="Auto-filled from shipment" /></FormField>
                   <FormField label="Task Type"><select value={taskForm.taskType} onChange={(e) => updateTask("taskType", e.target.value)}><option value="General">General</option><option value="Cut-Off">Cut-Off</option><option value="ETD">ETD / Loading</option><option value="Documents">Documents</option><option value="Payment">Payment</option><option value="Customer Follow-up">Customer Follow-up</option></select></FormField>
+                  <FormField label="Task Title"><input value={taskForm.title} onChange={(e) => updateTask("title", e.target.value)} placeholder="Auto-filled after selecting shipment/type" /></FormField>
                   <FormField label="Due Date"><input type="date" value={taskForm.dueDate} onChange={(e) => updateTask("dueDate", e.target.value)} /></FormField>
                   <FormField label="Priority"><select value={taskForm.priority} onChange={(e) => updateTask("priority", e.target.value)}><option value="Low">Low</option><option value="Normal">Normal</option><option value="High">High</option><option value="Urgent">Urgent</option></select></FormField>
                   <FormField label="Note"><input value={taskForm.note} onChange={(e) => updateTask("note", e.target.value)} placeholder="Optional note" /></FormField>
