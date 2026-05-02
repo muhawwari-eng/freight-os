@@ -1268,6 +1268,44 @@ export default function App() {
 
   const cashPosition = financialDashboard.customerCollected - financialDashboard.supplierPaid;
 
+  const dashboardCharts = useMemo(() => {
+    const monthlyProfitMap = new Map();
+    const monthlyCollectionsMap = new Map();
+    const topCustomersMap = new Map();
+    const expenseCompaniesMap = new Map();
+
+    shipments.forEach((shipment) => {
+      const shipmentMonth = getMonthKey(getShipmentReportDate(shipment)) || "No date";
+      monthlyProfitMap.set(shipmentMonth, (monthlyProfitMap.get(shipmentMonth) || 0) + calcNetProfit(shipment, activeFxRate));
+
+      const customer = shipment.customer || "Unknown Customer";
+      topCustomersMap.set(customer, (topCustomersMap.get(customer) || 0) + calcOceanSell(shipment));
+
+      getExpenses(shipment).forEach((expense) => {
+        const company = expense.company || "Not set";
+        expenseCompaniesMap.set(company, (expenseCompaniesMap.get(company) || 0) + Number(expense.amountUsd || 0));
+      });
+
+      getPayments(shipment)
+        .filter((payment) => payment.purchaseType === "Customer Receipt")
+        .forEach((payment) => {
+          const collectionMonth = getMonthKey(payment.paidDate || payment.createdAt || getShipmentReportDate(shipment)) || "No date";
+          monthlyCollectionsMap.set(collectionMonth, (monthlyCollectionsMap.get(collectionMonth) || 0) + paymentAmountUsd(payment, shipment, activeFxRate));
+        });
+    });
+
+    const toRows = (map) => Array.from(map.entries()).map(([name, value]) => ({ name, value: Number(value || 0) }));
+    const byMonth = (a, b) => String(a.name).localeCompare(String(b.name));
+    const byValue = (a, b) => b.value - a.value;
+
+    return {
+      monthlyProfit: toRows(monthlyProfitMap).sort(byMonth).slice(-12),
+      monthlyCollections: toRows(monthlyCollectionsMap).sort(byMonth).slice(-12),
+      topCustomers: toRows(topCustomersMap).sort(byValue).slice(0, 8),
+      expensesByCompany: toRows(expenseCompaniesMap).sort(byValue).slice(0, 8),
+    };
+  }, [shipments, activeFxRate]);
+
   const reportData = useMemo(() => {
     const selectedShipments = shipments.filter((s) => isDateInRange(getShipmentReportDate(s), reportFromDate, reportToDate));
 
@@ -2087,13 +2125,16 @@ function importLocalBackup(event) {
             </section>
 
             {canSeeFinance && (
-              <section className="stats">
-                <Card icon="🧾" title="Customer Receivables" value={money(financialDashboard.customerRemaining)} />
-                <Card icon="💰" title="Collected From Clients" value={money(financialDashboard.customerCollected)} />
-                <Card icon="🏢" title="Supplier Payables" value={money(financialDashboard.supplierPayables)} />
-                <Card icon="✅" title="Paid To Suppliers" value={money(financialDashboard.supplierPaid)} />
-                <Card icon="🧮" title="Cash Position" value={money(cashPosition)} />
-              </section>
+              <>
+                <section className="stats">
+                  <Card icon="🧾" title="Customer Receivables" value={money(financialDashboard.customerRemaining)} />
+                  <Card icon="💰" title="Collected From Clients" value={money(financialDashboard.customerCollected)} />
+                  <Card icon="🏢" title="Supplier Payables" value={money(financialDashboard.supplierPayables)} />
+                  <Card icon="✅" title="Paid To Suppliers" value={money(financialDashboard.supplierPaid)} />
+                  <Card icon="🧮" title="Cash Position" value={money(cashPosition)} />
+                </section>
+                <DashboardCharts charts={dashboardCharts} />
+              </>
             )}
 
             <section className="dashboardGrid">
@@ -2839,6 +2880,70 @@ function Card({ icon, title, value }) {
       <span className="cardIcon">{icon}</span>
       <p>{title}</p>
       <h2>{value}</h2>
+    </div>
+  );
+}
+
+
+function DashboardCharts({ charts }) {
+  return (
+    <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 18 }}>
+      <SimpleBarChart title="📈 Monthly Profit" rows={charts.monthlyProfit} emptyText="No profit data yet" />
+      <SimpleBarChart title="💰 Monthly Collections" rows={charts.monthlyCollections} emptyText="No collections yet" />
+      <HorizontalBarList title="🏆 Top Customers" rows={charts.topCustomers} emptyText="No customer revenue yet" />
+      <HorizontalBarList title="💸 Expenses by Company" rows={charts.expensesByCompany} emptyText="No expenses yet" />
+    </section>
+  );
+}
+
+function SimpleBarChart({ title, rows, emptyText }) {
+  const max = Math.max(...(rows || []).map((row) => Math.abs(Number(row.value || 0))), 1);
+  return (
+    <div className="panel" style={{ minHeight: 260 }}>
+      <h2>{title}</h2>
+      {(!rows || rows.length === 0) ? (
+        <p>{emptyText}</p>
+      ) : (
+        <div style={{ display: "flex", alignItems: "end", gap: 10, height: 170, paddingTop: 16, borderBottom: "1px solid rgba(148, 163, 184, 0.35)" }}>
+          {rows.map((row) => {
+            const height = Math.max((Math.abs(Number(row.value || 0)) / max) * 145, 6);
+            return (
+              <div key={row.name} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, minWidth: 28 }} title={`${row.name}: ${money(row.value)}`}>
+                <small style={{ fontSize: 10, opacity: 0.75 }}>{money(row.value)}</small>
+                <div style={{ width: "100%", maxWidth: 34, height, borderRadius: "10px 10px 2px 2px", background: Number(row.value || 0) < 0 ? "#ef4444" : "#16a34a" }} />
+                <small style={{ fontSize: 10, transform: "rotate(-25deg)", whiteSpace: "nowrap", marginTop: 10 }}>{formatMonthLabel(row.name)}</small>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HorizontalBarList({ title, rows, emptyText }) {
+  const max = Math.max(...(rows || []).map((row) => Math.abs(Number(row.value || 0))), 1);
+  return (
+    <div className="panel" style={{ minHeight: 260 }}>
+      <h2>{title}</h2>
+      {(!rows || rows.length === 0) ? (
+        <p>{emptyText}</p>
+      ) : (
+        <div className="stackList">
+          {rows.map((row) => {
+            const width = Math.max((Math.abs(Number(row.value || 0)) / max) * 100, 4);
+            return (
+              <div key={row.name} className="miniCard">
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                  <b>{row.name}</b>
+                  <span>{money(row.value)}</span>
+                </div>
+                <div className="progress"><div style={{ width: `${width}%` }} /></div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
