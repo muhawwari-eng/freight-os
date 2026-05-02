@@ -262,6 +262,15 @@ const emptyReceivableForm = {
   note: "",
 };
 
+const emptyTaskForm = {
+  shipmentId: "",
+  title: "",
+  taskType: "General",
+  dueDate: new Date().toISOString().slice(0, 10),
+  priority: "Normal",
+  note: "",
+};
+
 const emptyEditForm = {
   id: "",
   customer: "",
@@ -311,6 +320,19 @@ function getExpenses(shipment) {
 
 function getPayments(shipment) {
   return Array.isArray(shipment.payments) ? shipment.payments : [];
+}
+
+function getTasks(shipment) {
+  return Array.isArray(shipment.tasks) ? shipment.tasks : [];
+}
+
+function getTaskStatus(task) {
+  if ((task.status || "Pending") === "Done") return "Done";
+  const days = getDaysLeft(task.dueDate);
+  if (days === null) return "Pending";
+  if (days < 0) return "Overdue";
+  if (days <= 2) return "Due Soon";
+  return "Pending";
 }
 
 function calcOceanBuy(shipment) {
@@ -536,6 +558,7 @@ function normalizeShipment(shipment) {
     transports: getTransports(shipment),
     expenses: getExpenses(shipment),
     payments: getPayments(shipment),
+    tasks: getTasks(shipment),
   };
 }
 
@@ -1053,6 +1076,8 @@ export default function App() {
   const [expenseForm, setExpenseForm] = useState(emptyExpenseForm);
   const [paymentForm, setPaymentForm] = useState(emptyPaymentForm);
   const [receivableForm, setReceivableForm] = useState(emptyReceivableForm);
+  const [taskForm, setTaskForm] = useState(emptyTaskForm);
+  const [taskFilter, setTaskFilter] = useState("open");
   const [editForm, setEditForm] = useState(emptyEditForm);
   const [isEditing, setIsEditing] = useState(false);
   const [saveStatus, setSaveStatus] = useState("Saved automatically");
@@ -1267,6 +1292,45 @@ export default function App() {
   }, [shipments, activeFxRate]);
 
   const cashPosition = financialDashboard.customerCollected - financialDashboard.supplierPaid;
+
+  const taskDashboard = useMemo(() => {
+    const acc = { total: 0, pending: 0, done: 0, overdue: 0, dueSoon: 0 };
+    shipments.forEach((shipment) => {
+      getTasks(shipment).forEach((task) => {
+        acc.total += 1;
+        const status = getTaskStatus(task);
+        if (status === "Done") acc.done += 1;
+        else {
+          acc.pending += 1;
+          if (status === "Overdue") acc.overdue += 1;
+          if (status === "Due Soon") acc.dueSoon += 1;
+        }
+      });
+    });
+    return acc;
+  }, [shipments]);
+
+  const allTasks = useMemo(() => {
+    return shipments
+      .flatMap((shipment) =>
+        getTasks(shipment).map((task) => ({
+          ...task,
+          shipmentId: shipment.id,
+          shipmentCustomer: shipment.customer,
+          bookingNo: shipment.bookingNo,
+          route: `${shipment.pol || ""} → ${shipment.pod || ""}`,
+          taskStatus: getTaskStatus(task),
+        }))
+      )
+      .filter((task) => {
+        if (taskFilter === "open") return task.taskStatus !== "Done";
+        if (taskFilter === "done") return task.taskStatus === "Done";
+        if (taskFilter === "overdue") return task.taskStatus === "Overdue";
+        if (taskFilter === "dueSoon") return task.taskStatus === "Due Soon";
+        return true;
+      })
+      .sort((a, b) => String(a.dueDate || "9999-12-31").localeCompare(String(b.dueDate || "9999-12-31")));
+  }, [shipments, taskFilter]);
 
   const dashboardCharts = useMemo(() => {
     const monthlyProfitMap = new Map();
@@ -1557,6 +1621,10 @@ export default function App() {
     setReceivableForm((prev) => ({ ...prev, [field]: value }));
   }
 
+  function updateTask(field, value) {
+    setTaskForm((prev) => ({ ...prev, [field]: value }));
+  }
+
   function updateEdit(field, value) {
     setEditForm((prev) => ({ ...prev, [field]: value }));
   }
@@ -1725,6 +1793,7 @@ function addShipmentFromForm(e) {
       transports: [],
       expenses: [],
       payments: [],
+      tasks: [],
     });
 
     setShipments((prev) => dedupeShipments([newShipment, ...prev]));
@@ -1859,6 +1928,138 @@ function addShipmentFromForm(e) {
     );
     if (updatedSelected) setSelectedShipment(updatedSelected);
     setReceivableForm({ ...emptyReceivableForm, fxRate: String(activeFxRate) });
+  }
+
+  function addTaskToShipment(e) {
+    e.preventDefault();
+    if (!canEditOperation) {
+      alert("You do not have permission to add tasks.");
+      return;
+    }
+    if (!taskForm.shipmentId || !taskForm.title.trim() || !taskForm.dueDate) {
+      alert("Please select shipment, task title, and due date.");
+      return;
+    }
+
+    const newTask = {
+      id: `TASK-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      title: taskForm.title.trim(),
+      taskType: taskForm.taskType || "General",
+      dueDate: taskForm.dueDate,
+      priority: taskForm.priority || "Normal",
+      note: taskForm.note,
+      status: "Pending",
+      createdAt: new Date().toISOString(),
+      createdBy: user?.email || "unknown",
+    };
+
+    let updatedSelected = null;
+    setShipments((prev) =>
+      prev.map((s) => {
+        if (s.id !== taskForm.shipmentId) return s;
+        const updated = normalizeShipment({ ...s, tasks: [newTask, ...getTasks(s)] });
+        if (selectedShipment?.id === s.id) updatedSelected = updated;
+        return updated;
+      })
+    );
+    if (updatedSelected) setSelectedShipment(updatedSelected);
+    setTaskForm(emptyTaskForm);
+  }
+
+  function createAutoTasksForShipment(shipment) {
+    if (!canEditOperation) {
+      alert("You do not have permission to create tasks.");
+      return;
+    }
+    const existingTitles = new Set(getTasks(shipment).map((task) => task.title));
+    const autoTasks = [];
+    if (shipment.cutOff && !existingTitles.has("Cut-Off reminder")) {
+      const due = new Date(shipment.cutOff);
+      due.setDate(due.getDate() - 1);
+      autoTasks.push({
+        id: `TASK-${Date.now()}-cutoff`,
+        title: "Cut-Off reminder",
+        taskType: "Cut-Off",
+        dueDate: due.toISOString().slice(0, 10),
+        priority: "High",
+        note: `Follow up before cut-off date: ${shipment.cutOff}`,
+        status: "Pending",
+        createdAt: new Date().toISOString(),
+        createdBy: user?.email || "unknown",
+      });
+    }
+    if (shipment.etd && !existingTitles.has("ETD / loading reminder")) {
+      const due = new Date(shipment.etd);
+      due.setDate(due.getDate() - 1);
+      autoTasks.push({
+        id: `TASK-${Date.now()}-etd`,
+        title: "ETD / loading reminder",
+        taskType: "ETD",
+        dueDate: due.toISOString().slice(0, 10),
+        priority: "High",
+        note: `Follow up one day before ETD/loading: ${shipment.etd}`,
+        status: "Pending",
+        createdAt: new Date().toISOString(),
+        createdBy: user?.email || "unknown",
+      });
+    }
+    if (!autoTasks.length) {
+      alert("No Cut-Off/ETD date found, or auto reminder tasks already exist.");
+      return;
+    }
+
+    let updatedSelected = null;
+    setShipments((prev) =>
+      prev.map((s) => {
+        if (s.id !== shipment.id) return s;
+        const updated = normalizeShipment({ ...s, tasks: [...autoTasks, ...getTasks(s)] });
+        if (selectedShipment?.id === s.id) updatedSelected = updated;
+        return updated;
+      })
+    );
+    if (updatedSelected) setSelectedShipment(updatedSelected);
+  }
+
+  function toggleTaskStatus(shipmentId, taskId) {
+    if (!canEditOperation) {
+      alert("You do not have permission to update tasks.");
+      return;
+    }
+    let updatedSelected = null;
+    setShipments((prev) =>
+      prev.map((s) => {
+        if (s.id !== shipmentId) return s;
+        const updated = normalizeShipment({
+          ...s,
+          tasks: getTasks(s).map((task) =>
+            task.id === taskId
+              ? { ...task, status: task.status === "Done" ? "Pending" : "Done", completedAt: task.status === "Done" ? "" : new Date().toISOString() }
+              : task
+          ),
+        });
+        if (selectedShipment?.id === s.id) updatedSelected = updated;
+        return updated;
+      })
+    );
+    if (updatedSelected) setSelectedShipment(updatedSelected);
+  }
+
+  function deleteTask(shipmentId, taskId) {
+    if (role !== "admin") {
+      alert("Only admin can delete tasks.");
+      return;
+    }
+    if (!confirm("Delete this task?")) return;
+    let updatedSelected = null;
+    setShipments((prev) =>
+      prev.map((s) => {
+        if (s.id !== shipmentId) return s;
+        const updated = normalizeShipment({ ...s, tasks: getTasks(s).filter((task) => task.id !== taskId) });
+        if (selectedShipment?.id === s.id) updatedSelected = updated;
+        return updated;
+      })
+    );
+    if (updatedSelected) setSelectedShipment(updatedSelected);
   }
 
   function deletePayment(shipmentId, paymentId) {
@@ -2083,6 +2284,7 @@ function importLocalBackup(event) {
           {canSeeFinance && <button className={tab === "expenses" ? "active" : ""} onClick={() => setTab("expenses")}>💸 Expenses</button>}
           {canSeeFinance && <button className={tab === "payments" ? "active" : ""} onClick={() => setTab("payments")}>💳 Payments</button>}
           {canSeeFinance && <button className={tab === "receivables" ? "active" : ""} onClick={() => setTab("receivables")}>💰 Receivables</button>}
+          <button className={tab === "tasks" ? "active" : ""} onClick={() => setTab("tasks")}>⏰ Tasks</button>
           {canSeeFinance && <button className={tab === "exchange" ? "active" : ""} onClick={() => setTab("exchange")}>💱 Exchange Rate</button>}
           <button className={tab === "ports" ? "active" : ""} onClick={() => setTab("ports")}>⚓ Ports</button>
           <button className={tab === "reports" ? "active" : ""} onClick={() => setTab("reports")}>📊 Reports</button>
@@ -2121,6 +2323,8 @@ function importLocalBackup(event) {
               <Card icon="📋" title="Total Shipments" value={totals.shipments} />
               <Card icon="🟦" title="FCL Containers" value={totals.fcl} />
               <Card icon="🟨" title="LCL Shipments" value={totals.lcl} />
+              <Card icon="⏰" title="Pending Tasks" value={taskDashboard.pending} />
+              <Card icon="⚠️" title="Due Soon / Overdue" value={`${taskDashboard.dueSoon} / ${taskDashboard.overdue}`} />
               <Card icon="💵" title="Net Profit After Expenses" value={canSeeFinance ? money(totals.netProfit) : "—"} />
             </section>
 
@@ -2235,6 +2439,27 @@ function importLocalBackup(event) {
                 {getTransports(selectedShipment).map((t, i) => (
                   <p key={i}>{t.company} - {canSeeFinance ? money(t.costTry, "TRY") : "Cost hidden"}</p>
                 ))}
+
+                <h3>Tasks / Reminders</h3>
+                <div className="actions mt">
+                  {canEditOperation && <button className="ghostBtn" onClick={() => createAutoTasksForShipment(selectedShipment)}>Create Cut-Off / ETD Reminders</button>}
+                </div>
+                {getTasks(selectedShipment).length === 0 && <p>No tasks yet.</p>}
+                <div className="miniList">
+                  {getTasks(selectedShipment).map((task) => (
+                    <div className="miniCard" key={task.id}>
+                      <b>{task.title}</b>
+                      <p>{task.taskType || "General"} • Due: {task.dueDate || "No date"} • Priority: {task.priority || "Normal"} • Status: {getTaskStatus(task)}</p>
+                      {task.note && <p>{task.note}</p>}
+                      {canEditOperation && (
+                        <div className="actions mt">
+                          <button className="saveBtn" onClick={() => toggleTaskStatus(selectedShipment.id, task.id)}>{task.status === "Done" ? "Mark Pending" : "Mark Done"}</button>
+                          {role === "admin" && <button className="dangerBtn" onClick={() => deleteTask(selectedShipment.id, task.id)}>Delete</button>}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
 
                 {canSeeFinance && (
                   <>
@@ -2451,6 +2676,70 @@ function importLocalBackup(event) {
               )}
             </div>
             <ReceivablesList shipments={shipments} exchangeRate={activeFxRate} canManagePayments={canManagePayments} deletePayment={deletePayment} onOpen={openShipmentDetails} />
+          </section>
+        )}
+
+        {tab === "tasks" && (
+          <section className="panel">
+            <div className="panelHead">
+              <div>
+                <h2>Tasks / Reminders</h2>
+                <p>Track shipment follow-ups, cut-off reminders, loading reminders, and daily operation tasks.</p>
+              </div>
+              <div className="actions">
+                <select value={taskFilter} onChange={(e) => setTaskFilter(e.target.value)}>
+                  <option value="open">Open Tasks</option>
+                  <option value="dueSoon">Due Soon</option>
+                  <option value="overdue">Overdue</option>
+                  <option value="done">Done</option>
+                  <option value="all">All Tasks</option>
+                </select>
+              </div>
+            </div>
+
+            <section className="stats">
+              <Card icon="📌" title="Total Tasks" value={taskDashboard.total} />
+              <Card icon="⏳" title="Pending" value={taskDashboard.pending} />
+              <Card icon="⚠️" title="Due Soon" value={taskDashboard.dueSoon} />
+              <Card icon="🚨" title="Overdue" value={taskDashboard.overdue} />
+              <Card icon="✅" title="Done" value={taskDashboard.done} />
+            </section>
+
+            {canEditOperation && (
+              <form onSubmit={addTaskToShipment} className="editBox">
+                <div className="formGrid">
+                  <FormField label="Shipment"><select value={taskForm.shipmentId} onChange={(e) => updateTask("shipmentId", e.target.value)}><option value="">Select Shipment</option>{shipments.map((s) => <option key={s.id} value={s.id}>{s.id} - {s.customer}</option>)}</select></FormField>
+                  <FormField label="Task Title"><input value={taskForm.title} onChange={(e) => updateTask("title", e.target.value)} placeholder="Example: Follow up cut-off" /></FormField>
+                  <FormField label="Task Type"><select value={taskForm.taskType} onChange={(e) => updateTask("taskType", e.target.value)}><option value="General">General</option><option value="Cut-Off">Cut-Off</option><option value="ETD">ETD / Loading</option><option value="Documents">Documents</option><option value="Payment">Payment</option><option value="Customer Follow-up">Customer Follow-up</option></select></FormField>
+                  <FormField label="Due Date"><input type="date" value={taskForm.dueDate} onChange={(e) => updateTask("dueDate", e.target.value)} /></FormField>
+                  <FormField label="Priority"><select value={taskForm.priority} onChange={(e) => updateTask("priority", e.target.value)}><option value="Low">Low</option><option value="Normal">Normal</option><option value="High">High</option><option value="Urgent">Urgent</option></select></FormField>
+                  <FormField label="Note"><input value={taskForm.note} onChange={(e) => updateTask("note", e.target.value)} placeholder="Optional note" /></FormField>
+                </div>
+                <div className="actions mt"><button className="saveBtn" type="submit">Add Task</button></div>
+              </form>
+            )}
+
+            <div className="tableWrap mt">
+              <table>
+                <thead><tr><th>Due Date</th><th>Task</th><th>Shipment</th><th>Customer</th><th>Booking</th><th>Route</th><th>Priority</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody>
+                  {allTasks.map((task) => (
+                    <tr key={task.id}>
+                      <td>{task.dueDate || "No date"}</td>
+                      <td><b>{task.title}</b><br /><span className="smallText">{task.taskType || "General"}{task.note ? ` • ${task.note}` : ""}</span></td>
+                      <td>{task.shipmentId}</td>
+                      <td>{task.shipmentCustomer}</td>
+                      <td>{task.bookingNo || "Not set"}</td>
+                      <td>{task.route}</td>
+                      <td>{task.priority || "Normal"}</td>
+                      <td><span className="badge">{task.taskStatus}</span></td>
+                      <td><div className="actions">{canEditOperation && <button className="saveBtn" onClick={() => toggleTaskStatus(task.shipmentId, task.id)}>{task.status === "Done" ? "Pending" : "Done"}</button>}{role === "admin" && <button className="dangerBtn" onClick={() => deleteTask(task.shipmentId, task.id)}>Delete</button>}</div></td>
+                    </tr>
+                  ))}
+                  {allTasks.length === 0 && <tr><td colSpan="9">No tasks found.</td></tr>}
+                </tbody>
+              </table>
+            </div>
           </section>
         )}
 
@@ -2762,6 +3051,7 @@ function getTitle(tab) {
     expenses: "Expenses",
     payments: "Payments & Purchases",
     receivables: "Receivables",
+    tasks: "Tasks / Reminders",
     exchange: "Exchange Rate",
     ports: "Ports",
     reports: "Reports",
