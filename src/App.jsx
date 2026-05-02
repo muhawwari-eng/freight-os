@@ -1242,6 +1242,32 @@ export default function App() {
     );
   }, [shipments, activeFxRate]);
 
+
+  const financialDashboard = useMemo(() => {
+    return shipments.reduce(
+      (acc, shipment) => {
+        const summary = getPaymentSummary(shipment, activeFxRate);
+        acc.invoiceTotal += summary.receivableDue;
+        acc.customerCollected += summary.receivablePaid;
+        acc.customerRemaining += summary.receivableRemaining;
+        acc.supplierPayables += summary.payableDue;
+        acc.supplierPaid += summary.payablePaid;
+        acc.supplierRemaining += summary.payableRemaining;
+        return acc;
+      },
+      {
+        invoiceTotal: 0,
+        customerCollected: 0,
+        customerRemaining: 0,
+        supplierPayables: 0,
+        supplierPaid: 0,
+        supplierRemaining: 0,
+      }
+    );
+  }, [shipments, activeFxRate]);
+
+  const cashPosition = financialDashboard.customerCollected - financialDashboard.supplierPaid;
+
   const reportData = useMemo(() => {
     const selectedShipments = shipments.filter((s) => isDateInRange(getShipmentReportDate(s), reportFromDate, reportToDate));
 
@@ -2059,6 +2085,16 @@ function importLocalBackup(event) {
               <Card icon="🟨" title="LCL Shipments" value={totals.lcl} />
               <Card icon="💵" title="Net Profit After Expenses" value={canSeeFinance ? money(totals.netProfit) : "—"} />
             </section>
+
+            {canSeeFinance && (
+              <section className="stats">
+                <Card icon="🧾" title="Customer Receivables" value={money(financialDashboard.customerRemaining)} />
+                <Card icon="💰" title="Collected From Clients" value={money(financialDashboard.customerCollected)} />
+                <Card icon="🏢" title="Supplier Payables" value={money(financialDashboard.supplierPayables)} />
+                <Card icon="✅" title="Paid To Suppliers" value={money(financialDashboard.supplierPaid)} />
+                <Card icon="🧮" title="Cash Position" value={money(cashPosition)} />
+              </section>
+            )}
 
             <section className="dashboardGrid">
               <div className="panel">
