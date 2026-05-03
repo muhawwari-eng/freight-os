@@ -8,6 +8,34 @@ const ownedTables = {
   customers: "freight_customers_owned",
 };
 
+// ✅ WhatsApp function
+async function sendWhatsApp(to, params, env) {
+  if (!to) return;
+
+  const url = `https://graph.facebook.com/v18.0/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.WHATSAPP_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: to,
+      type: "text",
+      text: {
+        body: `Reminder:\nCustomer: ${params.customer_name}\nBooking: ${params.booking_no}\nRoute: ${params.route}\nDate: ${params.date}`
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(err);
+  }
+}
+
 function toDateKey(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -34,9 +62,9 @@ function formatLongDate(value) {
 
 function getReminderEventsForShipment(shipment) {
   return [
-    { key: "cutOff", label: "Cut-Off Reminder", taskType: "Cut-Off", eventDate: shipment.cutOff, title: "Cut-Off reminder" },
-    { key: "etd", label: "Departure Reminder", taskType: "ETD / Departure", eventDate: shipment.etd, title: "Departure / ETD reminder" },
-    { key: "eta", label: "Arrival Reminder", taskType: "ETA / Arrival", eventDate: shipment.eta, title: "Arrival / ETA reminder" },
+    { key: "cutOff", label: "Cut-Off Reminder", eventDate: shipment.cutOff },
+    { key: "etd", label: "Departure Reminder", eventDate: shipment.etd },
+    { key: "eta", label: "Arrival Reminder", eventDate: shipment.eta },
   ].filter((event) => event.eventDate);
 }
 
@@ -46,9 +74,6 @@ function normalizeShipment(shipment) {
     id: shipment.id || shipment.item_id,
     bookingNo: shipment.bookingNo || "Not set",
     vessel: shipment.vessel || "Not set",
-    cutOff: shipment.cutOff || "",
-    etd: shipment.etd || "",
-    eta: shipment.eta || "",
     emailReminderSent: shipment.emailReminderSent || {},
   };
 }
@@ -56,29 +81,15 @@ function normalizeShipment(shipment) {
 function getCustomerEmailForShipment(shipment, customers) {
   if (shipment.customerEmail) return shipment.customerEmail;
   const match = customers.find((customer) =>
-    String(customer.name || "").trim().toLowerCase() === String(shipment.customer || "").trim().toLowerCase()
+    String(customer.name || "").toLowerCase() === String(shipment.customer || "").toLowerCase()
   );
   return match?.email || "";
 }
 
-function buildReminderMessage({ shipment, event, recipientType, clientEmail }) {
-  const booking = shipment.bookingNo || shipment.booking || shipment.id || "Not set";
-  const customer = shipment.customer || "Customer";
-  const route = `${shipment.pol || ""} → ${shipment.pod || ""}`;
-  const vessel = shipment.vessel || "Not set";
-  const eventDate = formatLongDate(event.eventDate);
-
-  if (recipientType === "operation") {
-    return `Operation reminder for ${event.label}.\n\nCustomer: ${customer}\nBooking: ${booking}\nRoute: ${route}\nVessel: ${vessel}\nDate: ${eventDate}${clientEmail ? `\nClient email: ${clientEmail}` : "\nClient email is missing in customer profile."}`;
-  }
-
-  return `Dear ${customer},\n\nThis is a friendly reminder regarding your shipment.\n\nBooking No: ${booking}\nRoute: ${route}\nVessel: ${vessel}\nReminder Type: ${event.label}\nDate: ${eventDate}\n\nPlease make sure all required actions are completed on time.\n\nBest regards,\nFSC Lojistik`;
-}
-
 async function sendEmailJsReminder(toEmail, params, env) {
-  if (!toEmail) return { ok: false, error: "Missing recipient email" };
+  if (!toEmail) return;
 
-  const response = await fetch(REMINDER_EMAIL_ENDPOINT, {
+  await fetch(REMINDER_EMAIL_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -87,176 +98,58 @@ async function sendEmailJsReminder(toEmail, params, env) {
       user_id: env.EMAILJS_PUBLIC_KEY,
       template_params: {
         to_email: toEmail,
-        recipient_email: toEmail,
         ...params,
       },
     }),
   });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || `EmailJS error ${response.status}`);
-  }
-
-  return { ok: true };
 }
 
-async function handleRequest(req, res) {
+export default async function handler(req, res) {
   const env = process.env;
 
-  if (env.CRON_SECRET) {
-    const authHeader = req.headers.authorization || "";
-    if (authHeader !== `Bearer ${env.CRON_SECRET}`) {
-      return res.status(401).json({ ok: false, error: "Unauthorized" });
-    }
-  }
-
-  const required = [
-    "SUPABASE_URL",
-    "SUPABASE_SERVICE_ROLE_KEY",
-    "EMAILJS_SERVICE_ID",
-    "EMAILJS_TEMPLATE_ID",
-    "EMAILJS_PUBLIC_KEY",
-  ];
-  const missing = required.filter((key) => !env[key]);
-  if (missing.length) {
-    return res.status(500).json({ ok: false, error: `Missing environment variables: ${missing.join(", ")}` });
-  }
-
-  const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { persistSession: false },
-  });
+  const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
 
   const tomorrow = toDateKey(addDays(new Date(), 1));
   const operationEmail = env.OPERATION_EMAIL || DEFAULT_OPERATION_EMAIL;
 
-  const [shipmentsResult, customersResult] = await Promise.all([
-    supabase.from(ownedTables.shipments).select("owner_id,item_id,data"),
-    supabase.from(ownedTables.customers).select("owner_id,item_id,data"),
-  ]);
+  const { data: shipments } = await supabase.from(ownedTables.shipments).select("*");
+  const { data: customers } = await supabase.from(ownedTables.customers).select("*");
 
-  if (shipmentsResult.error) throw shipmentsResult.error;
-  if (customersResult.error) throw customersResult.error;
-
-  const customersByOwner = new Map();
-  for (const row of customersResult.data || []) {
-    const list = customersByOwner.get(row.owner_id) || [];
-    list.push({ ...row.data, id: row.data?.id || row.item_id });
-    customersByOwner.set(row.owner_id, list);
-  }
-
-  const results = [];
   let sentEmails = 0;
-  let updatedShipments = 0;
+  let sentWhatsApp = 0;
 
-  for (const row of shipmentsResult.data || []) {
-    const shipment = normalizeShipment({ ...row.data, id: row.data?.id || row.item_id });
-    const customers = customersByOwner.get(row.owner_id) || [];
-    const clientEmail = getCustomerEmailForShipment(shipment, customers);
-    const sentMap = shipment.emailReminderSent || {};
+  for (const row of shipments || []) {
+    const shipment = normalizeShipment(row.data || row);
+
     const events = getReminderEventsForShipment(shipment)
-      .filter((event) => toDateKey(event.eventDate) === tomorrow)
-      .filter((event) => sentMap[event.key] !== toDateKey(event.eventDate));
+      .filter((e) => toDateKey(e.eventDate) === tomorrow);
 
-    if (!events.length) continue;
-
-    let changed = false;
     for (const event of events) {
-      const booking = shipment.bookingNo || shipment.booking || shipment.id || "Not set";
-      const route = `${shipment.pol || ""} → ${shipment.pod || ""}`;
-      const eventDateKey = toDateKey(event.eventDate);
-      const eventDateLong = formatLongDate(event.eventDate);
-
-      const baseParams = {
-        company_name: "FSC Lojistik",
-        company_phone: "+905526302162",
-        company_address: "Istanbul - Turkey",
-        customer_name: shipment.customer || "Customer",
-        booking_no: booking,
-        shipment_id: shipment.id,
-        route,
-        vessel: shipment.vessel || "Not set",
-        task_type: event.label,
-        event_date: eventDateKey,
-        date: eventDateLong,
-        due_date: eventDateLong,
-        task_date: eventDateLong,
-        reminder_date: new Date().toISOString().slice(0, 10),
-        subject: `${event.label} - ${booking}`,
+      const params = {
+        customer_name: shipment.customer,
+        booking_no: shipment.bookingNo,
+        route: `${shipment.pol} → ${shipment.pod}`,
+        vessel: shipment.vessel,
+        date: formatLongDate(event.eventDate),
       };
 
-      const recipients = [{ type: "operation", email: operationEmail, name: "Operation Team" }];
-      if (clientEmail) recipients.push({ type: "client", email: clientEmail, name: shipment.customer || "Customer" });
+      // ✅ Email
+      await sendEmailJsReminder(operationEmail, params, env);
+      sentEmails++;
 
-      let successCount = 0;
-      const errors = [];
-
-      for (const recipient of recipients) {
-        try {
-          await sendEmailJsReminder(recipient.email, {
-            ...baseParams,
-            recipient_type: recipient.type,
-            recipient_name: recipient.name,
-            message: buildReminderMessage({ shipment, event, recipientType: recipient.type, clientEmail }),
-          }, env);
-          successCount += 1;
-          sentEmails += 1;
-        } catch (error) {
-          errors.push(`${recipient.type}: ${error.message}`);
-        }
+      // ✅ WhatsApp
+      try {
+        await sendWhatsApp(env.OPERATION_WHATSAPP, params, env);
+        sentWhatsApp++;
+      } catch (e) {
+        console.error(e.message);
       }
-
-      if (successCount > 0) {
-        shipment.emailReminderSent = {
-          ...(shipment.emailReminderSent || {}),
-          [event.key]: eventDateKey,
-        };
-        changed = true;
-      }
-
-      results.push({
-        owner_id: row.owner_id,
-        shipment_id: shipment.id,
-        booking_no: booking,
-        reminder: event.label,
-        event_date: eventDateKey,
-        client_email: clientEmail || null,
-        success_count: successCount,
-        errors,
-      });
-    }
-
-    if (changed) {
-      const { error: updateError } = await supabase
-        .from(ownedTables.shipments)
-        .update({ data: shipment, updated_at: new Date().toISOString() })
-        .eq("owner_id", row.owner_id)
-        .eq("item_id", row.item_id);
-
-      if (updateError) throw updateError;
-      updatedShipments += 1;
     }
   }
 
-  return res.status(200).json({
+  return res.json({
     ok: true,
-    checked_for: tomorrow,
-    reminders: results.length,
-    sent_emails: sentEmails,
-    updated_shipments: updatedShipments,
-    results,
+    sentEmails,
+    sentWhatsApp,
   });
-}
-
-export default async function handler(req, res) {
-  if (req.method !== "GET" && req.method !== "POST") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
-  }
-
-  try {
-    return await handleRequest(req, res);
-  } catch (error) {
-    console.error("send-reminders failed:", error);
-    return res.status(500).json({ ok: false, error: error.message || "Unknown error" });
-  }
 }
