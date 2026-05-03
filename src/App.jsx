@@ -1828,6 +1828,15 @@ export default function App() {
     const route = `${shipment.pol || ""} → ${shipment.pod || ""}`;
     const eventDate = toDateKey(event.eventDate);
 
+    const formattedEventDate = eventDate
+      ? new Date(`${eventDate}T12:00:00`).toLocaleDateString("en-GB", {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "2-digit",
+        })
+      : "Not set";
+
     const baseParams = {
       company_name: "FSC Lojistik",
       company_phone: "+905526302162",
@@ -1839,6 +1848,9 @@ export default function App() {
       vessel: shipment.vessel || "Not set",
       task_type: event.label,
       event_date: eventDate,
+      date: formattedEventDate,
+      due_date: formattedEventDate,
+      task_date: formattedEventDate,
       reminder_date: new Date().toISOString().slice(0, 10),
       subject: `${event.label} - ${booking}`,
       from_email: appSettings.companyEmail || "info@fsclojistik.com",
