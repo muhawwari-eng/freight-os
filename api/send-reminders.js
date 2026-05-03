@@ -147,6 +147,7 @@ export default async function handler(req, res) {
 
   try {
     const env = process.env;
+const whatsappEnabled = env.ENABLE_WHATSAPP === "true";
 
     const required = [
       "SUPABASE_URL",
@@ -254,7 +255,7 @@ export default async function handler(req, res) {
           }
         }
 
-        if (!shipment.whatsappReminderSent[whatsappKey]) {
+        if (whatsappEnabled && !shipment.whatsappReminderSent[whatsappKey]) {
           const whatsappRecipients = [];
           if (operationWhatsApp) whatsappRecipients.push(operationWhatsApp);
           if (clientWhatsApp) whatsappRecipients.push(clientWhatsApp);
