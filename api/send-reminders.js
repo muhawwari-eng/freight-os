@@ -19,13 +19,32 @@ const ownedTables = {
   customers: "freight_customers_owned",
 };
 
+function isTruthyEnv(value) {
+  return ["1", "true", "yes", "on"].includes(String(value || "").toLowerCase());
+}
+
+function getWhatsAppConfigIssues(env) {
+  const issues = [];
+  if (!env.BC_API_KEY) issues.push("BC_API_KEY is missing");
+  if (!env.BC_WORKSPACE_ID) issues.push("BC_WORKSPACE_ID is missing");
+  if (!env.BC_INTEGRATION_ID) issues.push("BC_INTEGRATION_ID is missing");
+  if (!(env.WHATSAPP_TEMPLATE_NAME || env.BC_TEMPLATE_NAME)) {
+    issues.push("WHATSAPP_TEMPLATE_NAME (or BC_TEMPLATE_NAME) is missing");
+  }
+  const workspaceId = Number(env.BC_WORKSPACE_ID);
+  if (env.BC_WORKSPACE_ID && !Number.isFinite(workspaceId)) {
+    issues.push("BC_WORKSPACE_ID must be a number");
+  }
+  return issues;
+}
+
 async function sendWhatsApp(to, params, env) {
   if (
     !to ||
     !env.BC_API_KEY ||
     !env.BC_WORKSPACE_ID ||
     !env.BC_INTEGRATION_ID ||
-    !env.WHATSAPP_TEMPLATE_NAME
+    !(env.WHATSAPP_TEMPLATE_NAME || env.BC_TEMPLATE_NAME)
   ) {
     return false;
   }
@@ -50,9 +69,9 @@ async function sendWhatsApp(to, params, env) {
           workspaceId,
           integrationId: env.BC_INTEGRATION_ID,
           phone,
-          templateName: env.WHATSAPP_TEMPLATE_NAME,
+          templateName: env.WHATSAPP_TEMPLATE_NAME || env.BC_TEMPLATE_NAME,
           templateLang:
-            env.WHATSAPP_LANGUAGE_CODE,
+            env.WHATSAPP_LANGUAGE_CODE || env.BC_TEMPLATE_LANG || "en",
           templateComponents: {
             name: params.customer_name || "",
             fullName: params.customer_name || "",
@@ -187,7 +206,9 @@ export default async function handler(req, res) {
 
   try {
     const env = process.env;
-const whatsappEnabled = env.ENABLE_WHATSAPP === "true";
+    const whatsappEnabledByFlag = isTruthyEnv(env.ENABLE_WHATSAPP);
+    const whatsappConfigIssues = getWhatsAppConfigIssues(env);
+    const whatsappEnabled = whatsappEnabledByFlag && !whatsappConfigIssues.length;
 
     const required = [
       "SUPABASE_URL",
@@ -347,6 +368,13 @@ const whatsappEnabled = env.ENABLE_WHATSAPP === "true";
     return res.status(200).json({
       ok: true,
       checked_for: tomorrow,
+      whatsapp_enabled: whatsappEnabled,
+      whatsapp_enable_flag: env.ENABLE_WHATSAPP || "",
+      whatsapp_disabled_reasons: whatsappEnabled
+        ? []
+        : whatsappEnabledByFlag
+          ? whatsappConfigIssues
+          : ["ENABLE_WHATSAPP is not set to a truthy value (true/1/yes/on)"],
       sent_emails: sentEmails,
       sent_whatsapp: sentWhatsApp,
       updated_shipments: updatedShipments,
