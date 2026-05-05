@@ -2,6 +2,17 @@ import { createClient } from "@supabase/supabase-js";
 
 const DEFAULT_OPERATION_EMAIL = "ops@fsclojistik.com";
 const REMINDER_EMAIL_ENDPOINT = "https://api.emailjs.com/api/v1.0/email/send";
+const BREADCRUMBS_ENDPOINT = "https://gateway.bcrumbs.net/core/gq";
+const SEND_NOTIFICATION_MUTATION = `
+  mutation sendNotification($input: SendNotificationInput!) {
+    sendNotification(input: $input) {
+      messageId
+      status
+      externalMessageId
+      createdAt
+    }
+  }
+`;
 
 const ownedTables = {
   shipments: "freight_shipments_owned",
@@ -9,37 +20,66 @@ const ownedTables = {
 };
 
 async function sendWhatsApp(to, params, env) {
-  if (!to || !env.WHATSAPP_TOKEN || !env.WHATSAPP_PHONE_NUMBER_ID) return false;
+  if (
+    !to ||
+    !env.BC_API_KEY ||
+    !env.BC_WORKSPACE_ID ||
+    !env.BC_INTEGRATION_ID ||
+    !env.WHATSAPP_TEMPLATE_NAME
+  ) {
+    return false;
+  }
 
   const cleanTo = String(to).replace(/[^\d]/g, "");
   if (!cleanTo) return false;
+  const phone = cleanTo.startsWith("+") ? cleanTo : `+${cleanTo}`;
+  const workspaceId = Number(env.BC_WORKSPACE_ID);
+  if (!Number.isFinite(workspaceId)) return false;
 
-  const url = `https://graph.facebook.com/v18.0/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
-
-  const response = await fetch(url, {
+  const response = await fetch(BREADCRUMBS_ENDPOINT, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${env.WHATSAPP_TOKEN}`,
+      authorization: env.BC_API_KEY,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to: cleanTo,
-      type: "text",
-      text: {
-        body: `Reminder:
-Customer: ${params.customer_name}
-Booking: ${params.booking_no}
-Route: ${params.route}
-Vessel: ${params.vessel}
-Date: ${params.date}`,
+      operationName: "sendNotification",
+      query: SEND_NOTIFICATION_MUTATION,
+      variables: {
+        input: {
+          workspaceId,
+          integrationId: env.BC_INTEGRATION_ID,
+          phone,
+          templateName: env.WHATSAPP_TEMPLATE_NAME,
+          templateLang:
+            env.WHATSAPP_LANGUAGE_CODE,
+          templateComponents: {
+            name: params.customer_name || "",
+            fullName: params.customer_name || "",
+            phone,
+            code: params.booking_no || "",
+            city: params.route || "",
+            country: "N/A",
+            address: params.route || "",
+            email: "",
+            reminder: params.task_type || "",
+            eventDate: params.date || "",
+            vessel: params.vessel || "",
+          },
+          trunk: env.BC_TRUNK || undefined,
+          senderId: env.BC_SENDER_ID || undefined,
+        },
       },
     }),
   });
 
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(err);
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok || payload?.errors?.length) {
+    const err =
+      payload?.errors?.map((item) => item.message).join("; ") ||
+      JSON.stringify(payload);
+    throw new Error(err || `Bread Crumbs error ${response.status}`);
   }
 
   return true;
