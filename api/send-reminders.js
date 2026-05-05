@@ -54,6 +54,18 @@ async function sendWhatsApp(to, params, env) {
   const phone = cleanTo.startsWith("+") ? cleanTo : `+${cleanTo}`;
   const workspaceId = Number(env.BC_WORKSPACE_ID);
   if (!Number.isFinite(workspaceId)) return false;
+  const templateComponents = [
+    {
+      type: "body",
+      parameters: [
+        { type: "text", text: params.customer_name || "" },
+        { type: "text", text: params.booking_no || "" },
+        { type: "text", text: params.route || "" },
+        { type: "text", text: params.vessel || "" },
+        { type: "text", text: params.date || "" },
+      ],
+    },
+  ];
 
   const response = await fetch(BREADCRUMBS_ENDPOINT, {
     method: "POST",
@@ -72,19 +84,7 @@ async function sendWhatsApp(to, params, env) {
           templateName: env.WHATSAPP_TEMPLATE_NAME || env.BC_TEMPLATE_NAME,
           templateLang:
             env.WHATSAPP_LANGUAGE_CODE || env.BC_TEMPLATE_LANG || "en",
-          templateComponents: {
-            name: params.customer_name || "",
-            fullName: params.customer_name || "",
-            phone,
-            code: params.booking_no || "",
-            city: params.route || "",
-            country: "N/A",
-            address: params.route || "",
-            email: "",
-            reminder: params.task_type || "",
-            eventDate: params.date || "",
-            vessel: params.vessel || "",
-          },
+          templateComponents,
           trunk: env.BC_TRUNK || undefined,
           senderId: env.BC_SENDER_ID || undefined,
         },
