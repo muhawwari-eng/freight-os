@@ -465,5 +465,6 @@ export function normalizeShipment(shipment) {
     financialInvoiceSequences: shipment.financialInvoiceSequences || { sale: 0, purchase: 0 },
     tasks: getTasks(shipment),
     emailReminderSent: shipment.emailReminderSent || {},
+    tracking: shipment.tracking || {},
   };
 }

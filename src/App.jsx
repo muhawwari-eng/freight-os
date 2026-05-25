@@ -906,6 +906,43 @@ export default function App() {
     setAppSettings((prev) => ({ ...prev, [field]: value }));
   }
 
+  async function subscribeShipmentTracking({ shipmentId, trackingNumber, notifyCustomerEmail }) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) throw new Error("Your session expired. Please log in again.");
+
+    const response = await fetch("/api/findteu-subscribe", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ shipmentId, trackingNumber, notifyCustomerEmail }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || "Could not start tracking.");
+    }
+
+    setShipments((previous) => previous.map((shipment) => (
+      shipment.id === shipmentId
+        ? normalizeShipment({ ...shipment, tracking: payload.tracking })
+        : shipment
+    )));
+    return payload;
+  }
+
+  async function refreshTrackingUpdates() {
+    if (!user?.id) throw new Error("Your session expired. Please log in again.");
+    const result = await supabase.from(ownedTables.shipments).select("item_id,data").eq("owner_id", user.id);
+    const refreshedShipments = dedupeShipments(readOwnedRows(result, normalizeShipment));
+    setShipments(refreshedShipments);
+    if (selectedShipment) {
+      const refreshedSelection = refreshedShipments.find((shipment) => shipment.id === selectedShipment.id);
+      if (refreshedSelection) setSelectedShipment(refreshedSelection);
+    }
+  }
+
   function updateEdit(field, value) {
     setEditForm((prev) => ({ ...prev, [field]: value }));
   }
@@ -1766,7 +1803,7 @@ function importLocalBackup(event) {
 
         {tab === "settings" && role === "admin" && <SettingsScreen appSettings={appSettings} updateSettings={updateSettings} />}
 
-        {tab === "api" && <ApiScreen />}
+        {tab === "api" && <ApiScreen shipments={shipments} canEditOperation={canEditOperation} subscribeShipmentTracking={subscribeShipmentTracking} refreshTrackingUpdates={refreshTrackingUpdates} />}
 
       </main>
     </div>
