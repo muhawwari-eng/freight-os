@@ -355,6 +355,176 @@ td {
   text-align: center;
 }
 
+.financeManagement {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.financeShipmentPicker {
+  max-width: 560px;
+}
+
+.financeFileHead {
+  align-items: center;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  display: flex;
+  justify-content: space-between;
+  padding: 18px 0;
+}
+
+.financeFileHead h3,
+.financeLedger h3,
+.financeForm h3 {
+  font-size: 17px;
+  margin: 0 0 8px;
+}
+
+.financeFileHead p {
+  margin: 0;
+}
+
+.financeMetrics {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(170px, 1fr));
+}
+
+.financeMetric {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 15px;
+}
+
+.financeMetric small {
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.financeMetric b {
+  color: #f8fafc;
+  font-size: 22px;
+}
+
+.financeMetric span {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.financeMetric.profit b {
+  color: #22c55e;
+}
+
+.financeMetric.cash b {
+  color: #38bdf8;
+}
+
+.financeLedger {
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  padding-top: 18px;
+}
+
+.compactTable {
+  margin-top: 10px;
+}
+
+.compactTable th,
+.compactTable td {
+  padding: 11px 12px;
+}
+
+.systemTag {
+  background: rgba(56, 189, 248, 0.14);
+  border-radius: 4px;
+  color: #7dd3fc;
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  margin-top: 5px;
+  padding: 2px 5px;
+  width: fit-content;
+}
+
+.ledgerStatus {
+  border-radius: 4px;
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 8px;
+}
+
+.ledgerStatus.paid {
+  background: rgba(34, 197, 94, 0.17);
+  color: #4ade80;
+}
+
+.ledgerStatus.partiallypaid {
+  background: rgba(245, 158, 11, 0.17);
+  color: #fbbf24;
+}
+
+.ledgerStatus.unpaid {
+  background: rgba(239, 68, 68, 0.17);
+  color: #f87171;
+}
+
+.financeForms {
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  display: grid;
+  gap: 22px;
+  grid-template-columns: minmax(420px, 1.4fr) minmax(320px, 1fr);
+  padding-top: 20px;
+}
+
+.allocationActions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.allocationActions select {
+  min-width: 215px;
+  padding: 8px;
+}
+
+.financeForm {
+  min-width: 0;
+}
+
+@media (max-width: 1100px) {
+  .financeMetrics,
+  .financeForms {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .financeMetrics,
+  .financeForms {
+    grid-template-columns: 1fr;
+  }
+
+  .financeFileHead {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .allocationActions {
+    align-items: stretch;
+    flex-direction: column;
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
 tr:hover {
   background: rgba(14, 165, 233, 0.08);
 }

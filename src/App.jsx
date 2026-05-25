@@ -6,7 +6,7 @@ import Login from "./Login";
 import { supabase } from "./supabase";
 import { DEFAULT_OPERATION_EMAIL, EMAILJS_PUBLIC_KEY, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, REMINDER_EMAIL_ENDPOINT } from "./config/email";
 import { defaultFxSettings, defaultShipments, defaultSuppliers, defaultWorldPorts, emptyBookingForm, emptyCustomerForm, emptyEditForm, emptyExpenseForm, emptyPaymentForm, emptyPortForm, emptyReceivableForm, emptySupplierForm, emptyTaskForm, emptyTransportForm, getLocalTodayDateKey, getNextCustomerId, getNextSupplierId } from "./data/defaults";
-import { addDays, buildReminderMessage, calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanSell, calcTotalCostUsd, dedupeShipments, getDateRangeLabel, getExpenses, getMonthKey, getNextShipmentId, getPaymentSummary, getPayments, getRate, getReminderEventsForShipment, getReminderSentKey, getShipmentReportDate, getTaskStatus, getTasks, getTransports, isDateInRange, isReminderAlreadySent, money, normalizeShipment, paymentAmountUsd, safeFileName, toDateKey } from "./utils/freight";
+import { addDays, buildReminderMessage, calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanSell, calcTotalCostUsd, dedupeShipments, getDateRangeLabel, getExpenses, getFinancialInvoices, getInvoicePaymentType, getMonthKey, getNextFinancialInvoiceNumber, getNextShipmentId, getPaymentSummary, getPayments, getRate, getReminderEventsForShipment, getReminderSentKey, getShipmentReportDate, getTaskStatus, getTasks, getTransports, isDateInRange, isReminderAlreadySent, money, normalizeShipment, paymentAmountUsd, safeFileName, toDateKey } from "./utils/freight";
 import { ownedTables, readOwnedRows, saveOwnedRows } from "./services/ownedStorage";
 import { getTitle } from "./utils/titles";
 import { DashboardScreen } from "./screens/DashboardScreen";
@@ -17,6 +17,7 @@ import { TransportScreen } from "./screens/TransportScreen";
 import { ExpensesScreen } from "./screens/ExpensesScreen";
 import { PaymentsScreen } from "./screens/PaymentsScreen";
 import { ReceivablesScreen } from "./screens/ReceivablesScreen";
+import { FinancialManagementScreen } from "./screens/FinancialManagementScreen";
 import { TasksScreen } from "./screens/TasksScreen";
 import { ExchangeScreen } from "./screens/ExchangeScreen";
 import { CustomersScreen } from "./screens/CustomersScreen";
@@ -1152,6 +1153,7 @@ function addShipmentFromForm(e) {
       : null;
     const newPayment = {
       id: existingPayment?.id || `PAY-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      invoiceId: existingPayment?.invoiceId || "",
       purchaseType: paymentForm.purchaseType,
       company: paymentForm.company || (paymentForm.purchaseType === "Customer Receipt" ? targetShipment?.customer : targetShipment?.line) || "Not set",
       amount: Number(paymentForm.amount || 0),
@@ -1218,6 +1220,104 @@ function addShipmentFromForm(e) {
     );
     if (updatedSelected) setSelectedShipment(updatedSelected);
     setReceivableForm({ ...emptyReceivableForm, fxRate: String(activeFxRate) });
+  }
+
+  function saveFinancialInvoice(shipmentId, invoiceForm, editingInvoiceId) {
+    if (!canManagePayments) {
+      alert("Only admin can manage invoices.");
+      return;
+    }
+
+    setShipments((previous) => previous.map((shipment) => {
+      if (shipment.id !== shipmentId) return shipment;
+      const prior = getFinancialInvoices(shipment).find((row) => row.id === editingInvoiceId);
+      const invoiceNo = editingInvoiceId ? prior?.invoiceNo : getNextFinancialInvoiceNumber(shipment, invoiceForm.invoiceType);
+      const invoice = {
+        ...invoiceForm,
+        id: editingInvoiceId || `INV-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        invoiceNo,
+        party: invoiceForm.party.trim(),
+        amount: Number(invoiceForm.amount || 0),
+        fxRate: Number(invoiceForm.fxRate || activeFxRate || 1),
+        createdAt: editingInvoiceId ? undefined : new Date().toISOString(),
+        updatedAt: editingInvoiceId ? new Date().toISOString() : undefined,
+        createdBy: editingInvoiceId ? undefined : user?.email || "unknown",
+        updatedBy: editingInvoiceId ? user?.email || "unknown" : undefined,
+      };
+      const savedInvoice = editingInvoiceId
+        ? { ...prior, ...invoice, createdAt: prior?.createdAt, createdBy: prior?.createdBy }
+        : invoice;
+      const invoices = editingInvoiceId
+        ? getFinancialInvoices(shipment).map((row) => (row.id === editingInvoiceId ? savedInvoice : row))
+        : [savedInvoice, ...getFinancialInvoices(shipment)];
+      const sequences = editingInvoiceId
+        ? shipment.financialInvoiceSequences
+        : {
+          ...(shipment.financialInvoiceSequences || {}),
+          [invoiceForm.invoiceType.toLowerCase()]: Number(invoiceNo.match(/(\d+)$/)?.[1] || 0),
+        };
+      return normalizeShipment({ ...shipment, financialInvoices: invoices, financialInvoiceSequences: sequences });
+    }));
+  }
+
+  function deleteFinancialInvoice(shipmentId, invoiceId) {
+    if (!canManagePayments) {
+      alert("Only admin can delete invoices.");
+      return;
+    }
+    if (!confirm("Delete this invoice? Linked payment records will remain as unallocated payments.")) return;
+    setShipments((previous) => previous.map((shipment) => {
+      if (shipment.id !== shipmentId) return shipment;
+      const invoices = getFinancialInvoices(shipment).filter((invoice) => invoice.id !== invoiceId);
+      const payments = getPayments(shipment).map((payment) => (
+        payment.invoiceId === invoiceId ? { ...payment, invoiceId: "" } : payment
+      ));
+      return normalizeShipment({ ...shipment, financialInvoices: invoices, payments });
+    }));
+  }
+
+  function addInvoicePayment(shipmentId, invoice, invoicePaymentForm) {
+    if (!canManagePayments) {
+      alert("Only admin can add payments.");
+      return;
+    }
+
+    const newPayment = {
+      id: `PAY-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      invoiceId: invoice.id,
+      purchaseType: getInvoicePaymentType(invoice),
+      company: invoice.party || "Not set",
+      amount: Number(invoicePaymentForm.amount || 0),
+      currency: invoicePaymentForm.currency || "USD",
+      fxRate: Number(invoicePaymentForm.fxRate || activeFxRate || 1),
+      paidDate: invoicePaymentForm.paidDate || getLocalTodayDateKey(),
+      note: invoicePaymentForm.note,
+      createdAt: new Date().toISOString(),
+      createdBy: user?.email || "unknown",
+    };
+
+    setShipments((previous) => previous.map((shipment) => (
+      shipment.id === shipmentId
+        ? normalizeShipment({ ...shipment, payments: [newPayment, ...getPayments(shipment)] })
+        : shipment
+    )));
+  }
+
+  function assignInvoicePayment(shipmentId, paymentId, invoiceId) {
+    if (!canManagePayments) {
+      alert("Only admin can allocate payments.");
+      return;
+    }
+    setShipments((previous) => previous.map((shipment) => (
+      shipment.id === shipmentId
+        ? normalizeShipment({
+          ...shipment,
+          payments: getPayments(shipment).map((payment) => (
+            payment.id === paymentId ? { ...payment, invoiceId, updatedAt: new Date().toISOString(), updatedBy: user?.email || "unknown" } : payment
+          )),
+        })
+        : shipment
+    )));
   }
 
   function addTaskToShipment(e) {
@@ -1594,6 +1694,7 @@ function importLocalBackup(event) {
           {canSeeFinance && <button className={tab === "expenses" ? "active" : ""} onClick={() => setTab("expenses")}>💸 Expenses</button>}
           {canSeeFinance && <button className={tab === "payments" ? "active" : ""} onClick={() => setTab("payments")}>💳 Payments</button>}
           {canSeeFinance && <button className={tab === "receivables" ? "active" : ""} onClick={() => setTab("receivables")}>💰 Receivables</button>}
+          {canSeeFinance && <button className={tab === "financialManagement" ? "active" : ""} onClick={() => setTab("financialManagement")}>▤ Financial Management</button>}
           <button className={tab === "tasks" ? "active" : ""} onClick={() => setTab("tasks")}>⏰ Tasks</button>
           {canSeeFinance && <button className={tab === "exchange" ? "active" : ""} onClick={() => setTab("exchange")}>💱 Exchange Rate</button>}
           <button className={tab === "ports" ? "active" : ""} onClick={() => setTab("ports")}>⚓ Ports</button>
@@ -1643,6 +1744,8 @@ function importLocalBackup(event) {
         {tab === "payments" && canSeeFinance && <PaymentsScreen canManagePayments={canManagePayments} addPaymentToShipment={addPaymentToShipment} paymentForm={paymentForm} updatePayment={updatePayment} shipments={shipments} activeFxRate={activeFxRate} deletePayment={deletePayment} openShipmentDetails={openShipmentDetails} editingPayment={editingPayment} startEditPayment={startEditPayment} cancelEditPayment={cancelEditPayment} />}
 
         {tab === "receivables" && canSeeFinance && <ReceivablesScreen canManagePayments={canManagePayments} addReceivableToShipment={addReceivableToShipment} receivableForm={receivableForm} updateReceivable={updateReceivable} shipments={shipments} activeFxRate={activeFxRate} deletePayment={deletePayment} openShipmentDetails={openShipmentDetails} />}
+
+        {tab === "financialManagement" && canSeeFinance && <FinancialManagementScreen shipments={shipments} activeFxRate={activeFxRate} canManagePayments={canManagePayments} saveFinancialInvoice={saveFinancialInvoice} deleteFinancialInvoice={deleteFinancialInvoice} addInvoicePayment={addInvoicePayment} assignInvoicePayment={assignInvoicePayment} />}
 
         {tab === "tasks" && <TasksScreen canEditOperation={canEditOperation} checkAndSendReminders={checkAndSendReminders} reminderRunning={reminderRunning} taskFilter={taskFilter} setTaskFilter={setTaskFilter} taskDashboard={taskDashboard} addTaskToShipment={addTaskToShipment} taskForm={taskForm} updateTask={updateTask} shipments={shipments} selectedTaskShipment={selectedTaskShipment} notifications={notifications} clearNotifications={clearNotifications} allTasks={allTasks} toggleTaskStatus={toggleTaskStatus} role={role} deleteTask={deleteTask} />}
 

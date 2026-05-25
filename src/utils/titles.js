@@ -9,6 +9,7 @@ export function getTitle(tab) {
     expenses: "Expenses",
     payments: "Payments & Purchases",
     receivables: "Receivables",
+    financialManagement: "Financial Management",
     tasks: "Tasks / Reminders",
     exchange: "Exchange Rate",
     ports: "Ports",

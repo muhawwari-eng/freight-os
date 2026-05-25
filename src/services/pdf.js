@@ -1,7 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { COMPANY_INFO, FSC_LOGO_DATA_URL } from "../data/defaults";
-import { calcOceanSell, getPaymentSummary, money, paymentAmountUsd, safeFileName } from "../utils/freight";
+import { calcOceanSell, getPaymentSummary, getShipmentFinancialLedger, money, paymentAmountUsd, safeFileName } from "../utils/freight";
 
 export function getInvoiceNumber(shipment) {
   const year = new Date().getFullYear();
@@ -422,4 +422,55 @@ export function generateReceiptPdf(shipment, payment, exchangeRate) {
   doc.text(COMPANY_INFO.address, 155, 287, { align: "center" });
 
   doc.save(`${receiptNo}-${safeFileName(shipment?.customer)}.pdf`);
+}
+
+export function generateProfitReportPdf(shipment, exchangeRate) {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const ledger = getShipmentFinancialLedger(shipment, exchangeRate);
+  const booking = shipment.bookingNo && shipment.bookingNo !== "Not set" ? shipment.bookingNo : shipment.id;
+
+  doc.setFont(undefined, "bold");
+  doc.setFontSize(20);
+  doc.text("SHIPMENT PROFIT REPORT", 14, 18);
+  doc.setFontSize(12);
+  doc.text(COMPANY_INFO.name, 14, 27);
+  doc.setFont(undefined, "normal");
+  doc.setFontSize(10);
+  doc.text(`Shipment: ${shipment.id}   Booking: ${booking}`, 14, 37);
+  doc.text(`Customer: ${shipment.customer || "Not set"}   Route: ${shipment.pol || ""} to ${shipment.pod || ""}`, 14, 44);
+
+  autoTable(doc, {
+    startY: 54,
+    theme: "grid",
+    head: [["Metric", "Amount USD"]],
+    body: [
+      ["Sales Invoices", money(ledger.salesTotal)],
+      ["Purchase Invoices", money(ledger.purchasesTotal)],
+      ["Expected Profit", money(ledger.expectedProfit)],
+      ["Collected from Customer", money(ledger.cashIn)],
+      ["Paid to Suppliers", money(ledger.cashOut)],
+      ["Cash Position", money(ledger.cashPosition)],
+    ],
+    styles: { fontSize: 10 },
+    headStyles: { fillColor: [14, 18, 22], textColor: [255, 255, 255] },
+  });
+
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY + 12,
+    theme: "grid",
+    head: [["Type", "Invoice", "Party / Category", "Total", "Paid", "Remaining", "Status"]],
+    body: ledger.rows.map((row) => [
+      row.invoiceType,
+      row.invoiceNo || "Not set",
+      `${row.party || "Not set"} / ${row.category || "Other"}`,
+      money(row.totalUsd),
+      money(row.paidUsd),
+      money(row.remainingUsd),
+      row.status,
+    ]),
+    styles: { fontSize: 8 },
+    headStyles: { fillColor: [14, 18, 22], textColor: [255, 255, 255] },
+  });
+
+  doc.save(`profit-report-${safeFileName(shipment.id)}.pdf`);
 }

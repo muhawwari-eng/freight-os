@@ -262,6 +262,28 @@ export const emptyReceivableForm = {
   note: "",
 };
 
+export const emptyFinancialInvoiceForm = {
+  invoiceType: "Sale",
+  category: "Freight Sale",
+  invoiceNo: "",
+  invoiceDate: getLocalTodayDateKey(),
+  dueDate: "",
+  party: "",
+  amount: "",
+  currency: "USD",
+  fxRate: "",
+  note: "",
+};
+
+export const emptyFinancialPaymentForm = {
+  invoiceId: "",
+  amount: "",
+  currency: "USD",
+  fxRate: "",
+  paidDate: getLocalTodayDateKey(),
+  note: "",
+};
+
 export const emptyTaskForm = {
   shipmentId: "",
   title: "",
