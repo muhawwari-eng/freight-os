@@ -5,7 +5,7 @@ import autoTable from "jspdf-autotable";
 import Login from "./Login";
 import { supabase } from "./supabase";
 import { DEFAULT_OPERATION_EMAIL, EMAILJS_PUBLIC_KEY, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, REMINDER_EMAIL_ENDPOINT } from "./config/email";
-import { defaultFxSettings, defaultShipments, defaultSuppliers, defaultWorldPorts, emptyBookingForm, emptyCustomerForm, emptyEditForm, emptyExpenseForm, emptyPaymentForm, emptyPortForm, emptyReceivableForm, emptySupplierForm, emptyTaskForm, emptyTransportForm, getNextCustomerId, getNextSupplierId } from "./data/defaults";
+import { defaultFxSettings, defaultShipments, defaultSuppliers, defaultWorldPorts, emptyBookingForm, emptyCustomerForm, emptyEditForm, emptyExpenseForm, emptyPaymentForm, emptyPortForm, emptyReceivableForm, emptySupplierForm, emptyTaskForm, emptyTransportForm, getLocalTodayDateKey, getNextCustomerId, getNextSupplierId } from "./data/defaults";
 import { addDays, buildReminderMessage, calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanSell, calcTotalCostUsd, dedupeShipments, getDateRangeLabel, getExpenses, getMonthKey, getNextShipmentId, getPaymentSummary, getPayments, getRate, getReminderEventsForShipment, getReminderSentKey, getShipmentReportDate, getTaskStatus, getTasks, getTransports, isDateInRange, isReminderAlreadySent, money, normalizeShipment, paymentAmountUsd, safeFileName, toDateKey } from "./utils/freight";
 import { ownedTables, readOwnedRows, saveOwnedRows } from "./services/ownedStorage";
 import { getTitle } from "./utils/titles";
@@ -1053,6 +1053,7 @@ function addShipmentFromForm(e) {
     const newShipment = normalizeShipment({
       id: getNextShipmentId(shipments),
       createdAt: new Date().toISOString(),
+      entryDate: bookingForm.entryDate || getLocalTodayDateKey(),
       customer: bookingForm.customer,
       line: bookingForm.line,
       pol: bookingForm.pol,
@@ -1077,7 +1078,7 @@ function addShipmentFromForm(e) {
     });
 
     setShipments((prev) => dedupeShipments([newShipment, ...prev]));
-    setBookingForm(emptyBookingForm);
+    setBookingForm({ ...emptyBookingForm, entryDate: getLocalTodayDateKey() });
     setTab("shipments");
   }
 

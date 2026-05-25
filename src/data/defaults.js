@@ -197,7 +197,14 @@ export function getNextSupplierId() {
   return `SUP-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+export function getLocalTodayDateKey() {
+  const today = new Date();
+  const timezoneOffset = today.getTimezoneOffset() * 60 * 1000;
+  return new Date(today.getTime() - timezoneOffset).toISOString().slice(0, 10);
+}
+
 export const emptyBookingForm = {
+  entryDate: getLocalTodayDateKey(),
   customer: "",
   line: "",
   pol: "",
@@ -266,6 +273,7 @@ export const emptyTaskForm = {
 
 export const emptyEditForm = {
   id: "",
+  entryDate: "",
   customer: "",
   line: "",
   pol: "",

@@ -1,7 +1,54 @@
+import { useMemo, useState } from "react";
 import { CustomerSelect, FormField, PortSelect } from "../components/freightComponents";
 import { calcNetProfit, calcOceanBuy, calcOceanSell, money } from "../utils/freight";
 
+function SortHeader({ label, sortKey, sortConfig, onSort }) {
+  const active = sortConfig.key === sortKey;
+  const direction = active ? sortConfig.direction : null;
+
+  return (
+    <th aria-sort={active ? (direction === "asc" ? "ascending" : "descending") : "none"}>
+      <button className={`sortHeader ${active ? "active" : ""}`} type="button" onClick={() => onSort(sortKey)}>
+        <span>{label}</span>
+        <span className="sortArrow" aria-hidden="true">{active ? (direction === "asc" ? "^" : "v") : "-"}</span>
+      </button>
+    </th>
+  );
+}
+
+function getSortValue(shipment, key, activeFxRate) {
+  if (key === "route") return `${shipment.pol || ""} ${shipment.pod || ""}`;
+  if (key === "containers") return Number(shipment.qty || 0);
+  if (key === "buy") return calcOceanBuy(shipment);
+  if (key === "sell") return calcOceanSell(shipment);
+  if (key === "profit") return calcNetProfit(shipment, activeFxRate);
+  return shipment[key] || "";
+}
+
 export function ShipmentsScreen({ resetShipmentFilters, query, setQuery, shipmentFilters, customers, updateShipmentFilter, suppliers, setLineFilter, ports, canSeeFinance, role, filtered, openShipmentDetails, activeFxRate, deleteShipment }) {
+  const [sortConfig, setSortConfig] = useState({ key: "entryDate", direction: "desc" });
+
+  function sortBy(key) {
+    setSortConfig((current) => ({
+      key,
+      direction: current.key === key && current.direction === "asc" ? "desc" : "asc",
+    }));
+  }
+
+  const sortedShipments = useMemo(() => {
+    const direction = sortConfig.direction === "asc" ? 1 : -1;
+    return [...filtered].sort((left, right) => {
+      const leftValue = getSortValue(left, sortConfig.key, activeFxRate);
+      const rightValue = getSortValue(right, sortConfig.key, activeFxRate);
+      const leftEmpty = leftValue === "" || leftValue === null || leftValue === undefined;
+      const rightEmpty = rightValue === "" || rightValue === null || rightValue === undefined;
+
+      if (leftEmpty !== rightEmpty) return leftEmpty ? 1 : -1;
+      if (typeof leftValue === "number" && typeof rightValue === "number") return (leftValue - rightValue) * direction;
+      return String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true, sensitivity: "base" }) * direction;
+    });
+  }, [activeFxRate, filtered, sortConfig]);
+
   return (
           <section className="panel">
             <div className="panelHead">
@@ -29,27 +76,29 @@ export function ShipmentsScreen({ resetShipmentFilters, query, setQuery, shipmen
               <table>
                 <thead>
                   <tr>
-                    <th>Shipment</th>
-                    <th>Type</th>
-                    <th>Containers</th>
-                    <th>Vessel</th>
-                    <th>Customer</th>
-                    <th>Route</th>
-                    <th>Cut-Off</th>
-                    <th>ETD</th>
-                    <th>ETA</th>
-                    <th>Status</th>
-                    {canSeeFinance && <th>Buy</th>}
-                    {canSeeFinance && <th>Sell</th>}
-                    {canSeeFinance && <th>Profit</th>}
-                    <th>Payment</th>
+                    <SortHeader label="Shipment" sortKey="id" sortConfig={sortConfig} onSort={sortBy} />
+                    <SortHeader label="Entry Date" sortKey="entryDate" sortConfig={sortConfig} onSort={sortBy} />
+                    <SortHeader label="Type" sortKey="cargoType" sortConfig={sortConfig} onSort={sortBy} />
+                    <SortHeader label="Containers" sortKey="containers" sortConfig={sortConfig} onSort={sortBy} />
+                    <SortHeader label="Vessel" sortKey="vessel" sortConfig={sortConfig} onSort={sortBy} />
+                    <SortHeader label="Customer" sortKey="customer" sortConfig={sortConfig} onSort={sortBy} />
+                    <SortHeader label="Route" sortKey="route" sortConfig={sortConfig} onSort={sortBy} />
+                    <SortHeader label="Cut-Off" sortKey="cutOff" sortConfig={sortConfig} onSort={sortBy} />
+                    <SortHeader label="ETD" sortKey="etd" sortConfig={sortConfig} onSort={sortBy} />
+                    <SortHeader label="ETA" sortKey="eta" sortConfig={sortConfig} onSort={sortBy} />
+                    <SortHeader label="Status" sortKey="status" sortConfig={sortConfig} onSort={sortBy} />
+                    {canSeeFinance && <SortHeader label="Buy" sortKey="buy" sortConfig={sortConfig} onSort={sortBy} />}
+                    {canSeeFinance && <SortHeader label="Sell" sortKey="sell" sortConfig={sortConfig} onSort={sortBy} />}
+                    {canSeeFinance && <SortHeader label="Profit" sortKey="profit" sortConfig={sortConfig} onSort={sortBy} />}
+                    <SortHeader label="Payment" sortKey="paymentStatus" sortConfig={sortConfig} onSort={sortBy} />
                     {role === "admin" && <th>Action</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((s) => (
+                  {sortedShipments.map((s) => (
                     <tr key={s.id} onClick={() => openShipmentDetails(s)}>
                       <td>{s.id}</td>
+                      <td>{s.entryDate || "Not set"}</td>
                       <td><span className={`typeBadge ${(s.cargoType || "FCL").toLowerCase()}`}>{s.cargoType || "FCL"}</span></td>
                       <td>{(s.cargoType || "FCL") === "LCL" ? "LCL" : `${Number(s.qty || 0)} × ${s.containerType || ""}`}</td>
                       <td>{s.vessel || "Not set"}</td>

@@ -17,6 +17,7 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
             {isEditing ? (
               <form onSubmit={saveEditShipment} className="editBox">
                 <div className="formGrid">
+                  <FormField label="Entry Date"><input type="date" value={editForm.entryDate} onChange={(e) => updateEdit("entryDate", e.target.value)} required /></FormField>
                   <FormField label="Client Name"><CustomerSelect value={editForm.customer} customers={customers} onChange={(value) => updateEdit("customer", value)} disabled={!canEditCore} /></FormField>
                   <FormField label="Carrier / Supplier Company"><SupplierSelect value={editForm.line} suppliers={suppliers} onChange={(value) => updateEdit("line", value)} disabled={!canEditCore} /></FormField>
                   <FormField label="POL / Origin Port"><PortSelect value={editForm.pol} ports={ports} onChange={(value) => updateEdit("pol", value)} disabled={!canEditCore} /></FormField>
@@ -41,6 +42,7 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
             ) : (
               <>
                 <div className="detailGrid">
+                  <p><b>Entry Date:</b> {selectedShipment.entryDate || "Not set"}</p>
                   <p><b>Customer:</b> {selectedShipment.customer}</p>
                   <p><b>Booking No:</b> {selectedShipment.bookingNo || "Not set"}</p>
                   <p><b>Vessel:</b> {selectedShipment.vessel || "Not set"}</p>

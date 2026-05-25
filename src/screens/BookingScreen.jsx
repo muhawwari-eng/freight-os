@@ -6,6 +6,7 @@ export function BookingScreen({ addShipmentFromForm, bookingForm, customers, upd
             <h2>New Booking</h2>
             <form onSubmit={addShipmentFromForm}>
               <div className="formGrid">
+                <FormField label="Entry Date"><input type="date" value={bookingForm.entryDate} onChange={(e) => updateBooking("entryDate", e.target.value)} required /></FormField>
                 <FormField label="Client Name"><CustomerSelect value={bookingForm.customer} customers={customers} onChange={(value) => updateBooking("customer", value)} /></FormField>
                 <FormField label="Carrier / Supplier Company"><SupplierSelect value={bookingForm.line} suppliers={suppliers} onChange={(value) => updateBooking("line", value)} /></FormField>
                 <FormField label="POL / Origin Port"><PortSelect value={bookingForm.pol} ports={ports} onChange={(value) => updateBooking("pol", value)} /></FormField>

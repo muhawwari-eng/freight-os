@@ -48,6 +48,15 @@ export function toDateKey(value) {
   return date.toISOString().slice(0, 10);
 }
 
+export function toLocalDateKey(value) {
+  if (!value) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(value))) return String(value);
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
+  const timezoneOffset = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - timezoneOffset).toISOString().slice(0, 10);
+}
+
 export function getReminderEventsForShipment(shipment) {
   return [
     { key: "cutOff", label: "Cut-Off Reminder", taskType: "Cut-Off", eventDate: shipment.cutOff, title: "Cut-Off reminder" },
@@ -190,7 +199,7 @@ export function getProgress(shipment) {
 }
 
 export function getShipmentReportDate(shipment) {
-  return shipment?.createdAt || shipment?.eta || shipment?.etd || shipment?.cutOff || "";
+  return shipment?.entryDate || shipment?.createdAt || shipment?.eta || shipment?.etd || shipment?.cutOff || "";
 }
 
 export function getMonthKey(dateValue) {
@@ -288,9 +297,12 @@ export function dedupeShipments(rows) {
 }
 
 export function normalizeShipment(shipment) {
+  const createdAt = shipment.createdAt || shipment.created_at || shipment.eta || shipment.etd || shipment.cutOff || new Date().toISOString();
+
   return {
     ...shipment,
-    createdAt: shipment.createdAt || shipment.created_at || shipment.eta || shipment.etd || shipment.cutOff || new Date().toISOString(),
+    createdAt,
+    entryDate: shipment.entryDate || toLocalDateKey(createdAt),
     cargoType: shipment.cargoType || "FCL",
     bookingNo: shipment.bookingNo || "Not set",
     vessel: shipment.vessel || "Not set",

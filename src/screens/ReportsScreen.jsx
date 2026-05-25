@@ -7,7 +7,7 @@ export function ReportsScreen({ reportFromDate, setReportFromDate, reportToDate,
             <div className="panelHead">
               <div>
                 <h2>Detailed Reports</h2>
-                <p>Reports are based on the shipment creation date. Select From / To dates, or leave them empty for all dates. Old shipments use ETA / ETD / Cut-Off as fallback.</p>
+                <p>Reports are based on the shipment entry date. Select From / To dates, or leave them empty for all dates. Old shipments use their available saved date as fallback.</p>
               </div>
               <div className="actions">
                 <FormField label="From Date">
@@ -83,7 +83,7 @@ export function ReportsScreen({ reportFromDate, setReportFromDate, reportToDate,
               <table>
                 <thead>
                   <tr>
-                    <th>Created</th>
+                    <th>Entry Date</th>
                     <th>Shipment</th>
                     <th>Customer</th>
                     <th>Company</th>

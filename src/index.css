@@ -329,6 +329,32 @@ td {
   white-space: nowrap;
 }
 
+.sortHeader {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-weight: 700;
+  gap: 8px;
+  padding: 0;
+}
+
+.sortHeader:hover,
+.sortHeader.active {
+  color: #e0f2fe;
+}
+
+.sortArrow {
+  color: #38bdf8;
+  display: inline-block;
+  font-size: 12px;
+  min-width: 9px;
+  text-align: center;
+}
+
 tr:hover {
   background: rgba(14, 165, 233, 0.08);
 }
