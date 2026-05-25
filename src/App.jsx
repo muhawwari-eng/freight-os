@@ -941,6 +941,7 @@ export default function App() {
       const refreshedSelection = refreshedShipments.find((shipment) => shipment.id === selectedShipment.id);
       if (refreshedSelection) setSelectedShipment(refreshedSelection);
     }
+    return refreshedShipments;
   }
 
   function updateEdit(field, value) {

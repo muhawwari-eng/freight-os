@@ -7,12 +7,17 @@ function formatTrackingDate(value) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
+function pause(duration) {
+  return new Promise((resolve) => setTimeout(resolve, duration));
+}
+
 export function ApiScreen({ shipments, canEditOperation, subscribeShipmentTracking, refreshTrackingUpdates }) {
   const [selectedShipmentId, setSelectedShipmentId] = useState("");
   const [trackingNumberDraft, setTrackingNumberDraft] = useState(null);
   const [notifyCustomerEmailDraft, setNotifyCustomerEmailDraft] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [waitingForFirstUpdate, setWaitingForFirstUpdate] = useState(false);
   const [resultMessage, setResultMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const shipmentId = selectedShipmentId || shipments[0]?.id || "";
@@ -21,6 +26,26 @@ export function ApiScreen({ shipments, canEditOperation, subscribeShipmentTracki
   const trackingEvents = Array.isArray(tracking.events) ? tracking.events : [];
   const trackingNumber = trackingNumberDraft ?? tracking.trackingNumber ?? "";
   const notifyCustomerEmail = notifyCustomerEmailDraft ?? tracking.notifyCustomerEmail !== false;
+
+  async function waitForFirstTrackingUpdate(shipmentId, previousUpdatedAt) {
+    setWaitingForFirstUpdate(true);
+    try {
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        await pause(15000);
+        const refreshedShipments = await refreshTrackingUpdates();
+        const refreshed = refreshedShipments.find((item) => item.id === shipmentId);
+        if (refreshed?.tracking?.updatedAt && refreshed.tracking.updatedAt !== previousUpdatedAt) {
+          setResultMessage("First carrier update received and loaded.");
+          return;
+        }
+      }
+      setResultMessage("Tracking is connected. No carrier update received yet; use Refresh Updates later.");
+    } catch (error) {
+      setErrorMessage(error.message || "Tracking is connected, but updates could not be refreshed.");
+    } finally {
+      setWaitingForFirstUpdate(false);
+    }
+  }
 
   async function startTracking(event) {
     event.preventDefault();
@@ -37,7 +62,8 @@ export function ApiScreen({ shipments, canEditOperation, subscribeShipmentTracki
         trackingNumber: trackingNumber.trim().toUpperCase(),
         notifyCustomerEmail,
       });
-      setResultMessage("Tracking request sent. findTEU will push shipment updates automatically.");
+      setResultMessage("Tracking connected. Waiting for the first carrier update (usually within 60 seconds)...");
+      void waitForFirstTrackingUpdate(shipment.id, tracking.updatedAt || "");
     } catch (error) {
       setErrorMessage(error.message || "Could not start tracking.");
     } finally {
@@ -97,8 +123,8 @@ export function ApiScreen({ shipments, canEditOperation, subscribeShipmentTracki
             <span>Send customer email when status or ETA changes</span>
           </label>
           {canEditOperation && (
-            <button className="saveBtn" type="submit" disabled={submitting || !shipments.length}>
-              {submitting ? "Connecting..." : tracking.subscribed ? "Refresh Tracking Subscription" : "Start Automatic Tracking"}
+            <button className="saveBtn" type="submit" disabled={submitting || waitingForFirstUpdate || !shipments.length}>
+              {submitting ? "Connecting..." : waitingForFirstUpdate ? "Waiting for First Update..." : tracking.subscribed ? "Refresh Tracking Subscription" : "Start Automatic Tracking"}
             </button>
           )}
           {resultMessage && <p className="trackingSuccess">{resultMessage}</p>}
