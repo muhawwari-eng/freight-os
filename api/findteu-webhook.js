@@ -46,6 +46,15 @@ function compactEvents(events) {
   }));
 }
 
+function parseWebhookBody(body) {
+  if (typeof body !== "string") return body || {};
+  try {
+    return JSON.parse(body);
+  } catch {
+    return {};
+  }
+}
+
 async function sendTrackingEmail(toEmail, shipment, tracking, env) {
   if (!toEmail) return false;
   const response = await fetch(EMAILJS_ENDPOINT, {
@@ -92,7 +101,7 @@ export default async function handler(req, res) {
       return res.status(500).json({ ok: false, error: `Missing environment variables: ${missing.join(", ")}` });
     }
 
-    const body = req.body || {};
+    const body = parseWebhookBody(req.body);
     const payload = body.data || body;
     const trackingNumber = String(payload.container?.number || "").trim().toUpperCase();
     if (!trackingNumber) return res.status(400).json({ ok: false, error: "Container number is missing." });
