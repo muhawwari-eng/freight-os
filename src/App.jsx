@@ -1222,7 +1222,7 @@ function addShipmentFromForm(e) {
     setReceivableForm({ ...emptyReceivableForm, fxRate: String(activeFxRate) });
   }
 
-  function saveFinancialInvoice(shipmentId, invoiceForm, editingInvoiceId) {
+  function saveFinancialInvoice(shipmentId, invoiceForm, editingInvoiceId, calculatedInvoiceId) {
     if (!canManagePayments) {
       alert("Only admin can manage invoices.");
       return;
@@ -1250,13 +1250,18 @@ function addShipmentFromForm(e) {
       const invoices = editingInvoiceId
         ? getFinancialInvoices(shipment).map((row) => (row.id === editingInvoiceId ? savedInvoice : row))
         : [savedInvoice, ...getFinancialInvoices(shipment)];
+      const payments = calculatedInvoiceId
+        ? getPayments(shipment).map((payment) => (
+          payment.invoiceId === calculatedInvoiceId ? { ...payment, invoiceId: savedInvoice.id } : payment
+        ))
+        : getPayments(shipment);
       const sequences = editingInvoiceId
         ? shipment.financialInvoiceSequences
         : {
           ...(shipment.financialInvoiceSequences || {}),
           [invoiceForm.invoiceType.toLowerCase()]: Number(invoiceNo.match(/(\d+)$/)?.[1] || 0),
         };
-      return normalizeShipment({ ...shipment, financialInvoices: invoices, financialInvoiceSequences: sequences });
+      return normalizeShipment({ ...shipment, financialInvoices: invoices, financialInvoiceSequences: sequences, payments });
     }));
   }
 
