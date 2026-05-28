@@ -17,12 +17,12 @@ export function BookingScreen({ addShipmentFromForm, bookingForm, customers, upd
                 <FormField label="POL / Origin Port"><PortSelect value={bookingForm.pol} ports={ports} onChange={(value) => updateBooking("pol", value)} /></FormField>
                 <FormField label="POD / Destination Port"><PortSelect value={bookingForm.pod} ports={ports} onChange={(value) => updateBooking("pod", value)} /></FormField>
                 <FormField label="Booking No"><input value={bookingForm.bookingNo} onChange={(e) => updateBooking("bookingNo", e.target.value)} /></FormField>
-                <FormField label="Vessel Name"><input value={bookingForm.vessel} onChange={(e) => updateBooking("vessel", e.target.value)} /></FormField>
+                {!isAir && <FormField label="Vessel Name"><input value={bookingForm.vessel} onChange={(e) => updateBooking("vessel", e.target.value)} /></FormField>}
                 <FormField label="Cargo Type"><CargoSelect value={bookingForm.cargoType} onChange={(value) => updateBooking("cargoType", value)} /></FormField>
                 {isFcl && <FormField label="Container Type"><ContainerSelect value={bookingForm.containerType} onChange={(value) => updateBooking("containerType", value)} /></FormField>}
                 {isFcl && <FormField label="Container Quantity"><input type="number" min="0" step="1" value={bookingForm.qty} onChange={(e) => updateBooking("qty", e.target.value)} /></FormField>}
                 {!isFcl && <FormField label="Package Count"><input type="number" min="0" step="1" value={bookingForm.packageCount} onChange={(e) => updateBooking("packageCount", e.target.value)} /></FormField>}
-                {!isFcl && <FormField label="CBM"><input type="number" min="0" step="0.001" value={bookingForm.cbm} onChange={(e) => updateBooking("cbm", e.target.value)} required={!isAir} /></FormField>}
+                {!isFcl && !isAir && <FormField label="CBM"><input type="number" min="0" step="0.001" value={bookingForm.cbm} onChange={(e) => updateBooking("cbm", e.target.value)} required /></FormField>}
                 {!isFcl && <FormField label="Actual Weight KG"><input type="number" min="0" step="0.01" value={bookingForm.actualWeightKg} onChange={(e) => updateBooking("actualWeightKg", e.target.value)} /></FormField>}
                 {isAir && <FormField label="Volumetric Weight KG"><input type="number" min="0" step="0.01" value={bookingForm.volumetricWeightKg} onChange={(e) => updateBooking("volumetricWeightKg", e.target.value)} /></FormField>}
                 <FormField label={`Buy Price / ${unitLabel} USD`}><input type="number" min="0" step="0.01" value={bookingForm.buyUsd} onChange={(e) => updateBooking("buyUsd", e.target.value)} /></FormField>

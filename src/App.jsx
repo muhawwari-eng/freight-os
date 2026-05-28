@@ -625,6 +625,8 @@ export default function App() {
         cargoType: value,
         qty: value === "FCL" ? prev.qty : "",
         containerType: value === "FCL" ? prev.containerType || "40HC" : "",
+        cbm: value === "Air" ? "" : prev.cbm,
+        vessel: value === "Air" ? "" : prev.vessel,
       };
     });
   }
@@ -1092,14 +1094,14 @@ function saveEditShipment(e) {
     id: selectedShipment.id, // Never change shipment ID during editing.
     containerType: isFclShipment(draftShipment) ? editForm.containerType || selectedShipment.containerType || "40HC" : "",
     qty: isFclShipment(draftShipment) ? Number(editForm.qty || 0) : billableQty,
-    cbm: editForm.cbm,
+    cbm: isAirShipment(draftShipment) ? "" : editForm.cbm,
     actualWeightKg: editForm.actualWeightKg,
     volumetricWeightKg: editForm.volumetricWeightKg,
     packageCount: editForm.packageCount,
     buyUsd: Number(editForm.buyUsd || 0),
     sellUsd: Number(editForm.sellUsd || 0),
     bookingNo: editForm.bookingNo || "Not set",
-    vessel: editForm.vessel || "Not set",
+    vessel: isAirShipment(draftShipment) ? "Not set" : editForm.vessel || "Not set",
   });
 
   setShipments((prev) =>
@@ -1134,7 +1136,7 @@ function addShipmentFromForm(e) {
       containerType: isFcl ? bookingForm.containerType : "",
       cargoType: bookingForm.cargoType,
       qty: isFcl ? Number(bookingForm.qty) : billableQty,
-      cbm: bookingForm.cbm,
+      cbm: isAir ? "" : bookingForm.cbm,
       actualWeightKg: bookingForm.actualWeightKg,
       volumetricWeightKg: bookingForm.volumetricWeightKg,
       packageCount: bookingForm.packageCount,
@@ -1143,7 +1145,7 @@ function addShipmentFromForm(e) {
       fx: activeFxRate,
       status: bookingForm.status,
       bookingNo: bookingForm.bookingNo || "Not set",
-      vessel: bookingForm.vessel || "Not set",
+      vessel: isAir ? "Not set" : bookingForm.vessel || "Not set",
       cutOff: bookingForm.cutOff,
       etd: bookingForm.etd,
       eta: bookingForm.eta,

@@ -1,7 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { COMPANY_INFO, FSC_LOGO_DATA_URL } from "../data/defaults";
-import { calcOceanSell, getPaymentSummary, getShipmentBillableQty, getShipmentFinancialLedger, getShipmentLoadDescription, getShipmentUnitLabel, isFclShipment, money, paymentAmountUsd, safeFileName } from "../utils/freight";
+import { calcOceanSell, getPaymentSummary, getShipmentBillableQty, getShipmentFinancialLedger, getShipmentLoadDescription, getShipmentUnitLabel, isAirShipment, isFclShipment, money, paymentAmountUsd, safeFileName } from "../utils/freight";
 
 export function getInvoiceNumber(shipment) {
   const year = new Date().getFullYear();
@@ -103,10 +103,10 @@ export function generateInvoicePdf(shipment, exchangeRate) {
     ["Invoice No.", invoiceNo],
     ["Invoice Date", invoiceDate],
     ["Booking No.", bookingNo],
-    ["Vessel", shipment.vessel || "Not set"],
+    !isAirShipment(shipment) && ["Vessel", shipment.vessel || "Not set"],
     ["ETD", shipment.etd || "Not set"],
     ["ETA", shipment.eta || "Not set"],
-  ];
+  ].filter(Boolean);
 
   doc.setFont(undefined, "normal");
   doc.setFontSize(10);
@@ -145,9 +145,9 @@ export function generateInvoicePdf(shipment, exchangeRate) {
     ["Cargo Type", shipment.cargoType || "FCL"],
     ["Route", `${shipment.pol || ""} - ${shipment.pod || ""}`],
     ["Load", containerText],
-    ["Vessel", shipment.vessel || "Not set"],
+    !isAirShipment(shipment) && ["Vessel", shipment.vessel || "Not set"],
     ["Booking No", bookingNo],
-  ];
+  ].filter(Boolean);
   const colW = 186 / columns.length;
   columns.forEach(([label, value], i) => {
     const x = 12 + i * colW;

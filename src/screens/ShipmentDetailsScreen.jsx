@@ -27,7 +27,7 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
                   <FormField label="POL / Origin Port"><PortSelect value={editForm.pol} ports={ports} onChange={(value) => updateEdit("pol", value)} disabled={!canEditCore} /></FormField>
                   <FormField label="POD / Destination Port"><PortSelect value={editForm.pod} ports={ports} onChange={(value) => updateEdit("pod", value)} disabled={!canEditCore} /></FormField>
                   <FormField label="Booking No"><input value={editForm.bookingNo} onChange={(e) => updateEdit("bookingNo", e.target.value)} /></FormField>
-                  <FormField label="Vessel Name"><input value={editForm.vessel} onChange={(e) => updateEdit("vessel", e.target.value)} /></FormField>
+                  {!editIsAir && <FormField label="Vessel Name"><input value={editForm.vessel} onChange={(e) => updateEdit("vessel", e.target.value)} /></FormField>}
                   <FormField label="Cut-Off Date"><input type="date" value={editForm.cutOff} onChange={(e) => updateEdit("cutOff", e.target.value)} /></FormField>
                   <FormField label="ETD"><input type="date" value={editForm.etd} onChange={(e) => updateEdit("etd", e.target.value)} /></FormField>
                   <FormField label="ETA"><input type="date" value={editForm.eta} onChange={(e) => updateEdit("eta", e.target.value)} /></FormField>
@@ -37,7 +37,7 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
                   {canEditCore && editIsFcl && <FormField label="Container Type"><ContainerSelect value={editForm.containerType} onChange={(value) => updateEdit("containerType", value)} /></FormField>}
                   {canEditCore && editIsFcl && <FormField label="Container Quantity"><input type="number" min="0" step="1" value={editForm.qty} onChange={(e) => updateEdit("qty", e.target.value)} /></FormField>}
                   {canEditCore && !editIsFcl && <FormField label="Package Count"><input type="number" min="0" step="1" value={editForm.packageCount} onChange={(e) => updateEdit("packageCount", e.target.value)} /></FormField>}
-                  {canEditCore && !editIsFcl && <FormField label="CBM"><input type="number" min="0" step="0.001" value={editForm.cbm} onChange={(e) => updateEdit("cbm", e.target.value)} /></FormField>}
+                  {canEditCore && !editIsFcl && !editIsAir && <FormField label="CBM"><input type="number" min="0" step="0.001" value={editForm.cbm} onChange={(e) => updateEdit("cbm", e.target.value)} /></FormField>}
                   {canEditCore && !editIsFcl && <FormField label="Actual Weight KG"><input type="number" min="0" step="0.01" value={editForm.actualWeightKg} onChange={(e) => updateEdit("actualWeightKg", e.target.value)} /></FormField>}
                   {canEditCore && editIsAir && <FormField label="Volumetric Weight KG"><input type="number" min="0" step="0.01" value={editForm.volumetricWeightKg} onChange={(e) => updateEdit("volumetricWeightKg", e.target.value)} /></FormField>}
                   {canEditCore && <FormField label={`Buy Price / ${editUnitLabel} USD`}><input type="number" min="0" step="0.01" value={editForm.buyUsd} onChange={(e) => updateEdit("buyUsd", e.target.value)} /></FormField>}
@@ -54,7 +54,7 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
                   <p><b>Entry Date:</b> {selectedShipment.entryDate || "Not set"}</p>
                   <p><b>Customer:</b> {selectedShipment.customer}</p>
                   <p><b>Booking No:</b> {selectedShipment.bookingNo || "Not set"}</p>
-                  <p><b>Vessel:</b> {selectedShipment.vessel || "Not set"}</p>
+                  {!isAirShipment(selectedShipment) && <p><b>Vessel:</b> {selectedShipment.vessel || "Not set"}</p>}
                   <p><b>Route:</b> {selectedShipment.pol} → {selectedShipment.pod}</p>
                   <p><b>Load Details:</b> {getShipmentLoadDescription(selectedShipment)}</p>
                   <p><b>Billable Quantity:</b> {getShipmentBillableQty(selectedShipment)} {getShipmentUnitLabel(selectedShipment)}</p>

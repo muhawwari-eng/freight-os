@@ -68,7 +68,7 @@ export function ShipmentsScreen({ resetShipmentFilters, query, setQuery, shipmen
               <FormField label="POL"><PortSelect value={shipmentFilters.pol} ports={[{ code: "all", name: "All Ports", country: "" }, ...ports]} onChange={(value) => updateShipmentFilter("pol", value)} /></FormField>
               <FormField label="POD"><PortSelect value={shipmentFilters.pod} ports={[{ code: "all", name: "All Ports", country: "" }, ...ports]} onChange={(value) => updateShipmentFilter("pod", value)} /></FormField>
               <FormField label="Status"><select value={shipmentFilters.status} onChange={(e) => updateShipmentFilter("status", e.target.value)}><option value="all">All Statuses</option><option value="Draft">Draft</option><option value="Booked">Booked</option><option value="Loading">Loading</option><option value="In Transit">In Transit</option><option value="At Sea">At Sea</option><option value="At Port">At Port</option><option value="Arrived">Arrived</option><option value="Completed">Completed</option></select></FormField>
-              <FormField label="Cargo Type"><select value={shipmentFilters.cargoType} onChange={(e) => updateShipmentFilter("cargoType", e.target.value)}><option value="all">All Types</option><option value="FCL">FCL</option><option value="LCL">LCL Sea</option><option value="Air">Air Freight</option><option value="Road">Road Partial</option><option value="Cross">Cross Trade</option></select></FormField>
+              <FormField label="Cargo Type"><select value={shipmentFilters.cargoType} onChange={(e) => updateShipmentFilter("cargoType", e.target.value)}><option value="all">All Types</option><option value="FCL">FCL</option><option value="LCL">LCL Sea</option><option value="Air">Air Freight</option><option value="Road">Road Partial</option></select></FormField>
               <FormField label="Payment"><select value={shipmentFilters.paymentStatus} onChange={(e) => updateShipmentFilter("paymentStatus", e.target.value)}><option value="all">All Payments</option><option value="Unpaid">Unpaid</option><option value="Partially Paid">Partially Paid</option><option value="Fully Paid">Fully Paid</option></select></FormField>
             </div>
 
@@ -105,7 +105,7 @@ export function ShipmentsScreen({ resetShipmentFilters, query, setQuery, shipmen
                         <br />
                         <small>{getShipmentBillableQty(s)} {getShipmentUnitLabel(s)}</small>
                       </td>
-                      <td>{s.vessel || "Not set"}</td>
+                      <td>{(s.cargoType || "FCL") === "Air" ? "-" : s.vessel || "Not set"}</td>
                       <td>{s.customer}</td>
                       <td>{s.pol} → {s.pod}</td>
                       <td>{s.cutOff || "Not set"}</td>
