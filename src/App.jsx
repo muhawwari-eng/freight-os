@@ -6,7 +6,7 @@ import Login from "./Login";
 import { supabase } from "./supabase";
 import { DEFAULT_OPERATION_EMAIL, EMAILJS_PUBLIC_KEY, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, REMINDER_EMAIL_ENDPOINT } from "./config/email";
 import { defaultFxSettings, defaultShipments, defaultSuppliers, defaultWorldPorts, emptyBookingForm, emptyCustomerForm, emptyEditForm, emptyExpenseForm, emptyPaymentForm, emptyPortForm, emptyReceivableForm, emptySupplierForm, emptyTaskForm, emptyTransportForm, getLocalTodayDateKey, getNextCustomerId, getNextSupplierId } from "./data/defaults";
-import { addDays, buildReminderMessage, calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanSell, calcTotalCostUsd, dedupeShipments, getDateRangeLabel, getExpenses, getFinancialInvoices, getInvoicePaymentType, getMonthKey, getNextFinancialInvoiceNumber, getNextShipmentId, getPaymentSummary, getPayments, getRate, getReminderEventsForShipment, getReminderSentKey, getShipmentReportDate, getTaskStatus, getTasks, getTransports, isDateInRange, isReminderAlreadySent, money, normalizeShipment, paymentAmountUsd, safeFileName, toDateKey } from "./utils/freight";
+import { addDays, buildReminderMessage, calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanSell, calcTotalCostUsd, dedupeShipments, getDateRangeLabel, getExpenses, getFinancialInvoices, getInvoicePaymentType, getMonthKey, getNextFinancialInvoiceNumber, getNextShipmentId, getPaymentSummary, getPayments, getRate, getReminderEventsForShipment, getReminderSentKey, getShipmentBillableQty, getShipmentLoadDescription, getShipmentReportDate, getShipmentUnitLabel, getTaskStatus, getTasks, getTransports, isAirShipment, isDateInRange, isFclShipment, isReminderAlreadySent, money, normalizeShipment, paymentAmountUsd, safeFileName, toDateKey } from "./utils/freight";
 import { ownedTables, readOwnedRows, saveOwnedRows } from "./services/ownedStorage";
 import { getTitle } from "./utils/titles";
 import { DashboardScreen } from "./screens/DashboardScreen";
@@ -256,14 +256,14 @@ export default function App() {
     return shipments.reduce(
       (acc, s) => {
         acc.shipments += 1;
-        acc.containers += Number(s.qty || 0);
+        acc.containers += getShipmentBillableQty(s);
         acc.revenue += calcOceanSell(s);
         acc.costs += calcTotalCostUsd(s, activeFxRate);
         acc.grossProfit += calcGrossProfit(s, activeFxRate);
         acc.netProfit += calcNetProfit(s, activeFxRate);
         acc.expenses += calcExpensesUsd(s);
-        if ((s.cargoType || "FCL") === "LCL") acc.lcl += 1;
-        else acc.fcl += Number(s.qty || 0);
+        if (isFclShipment(s)) acc.fcl += Number(s.qty || 0);
+        else acc.lcl += 1;
         if ((s.paymentStatus || "").toLowerCase().includes("unpaid")) acc.unpaid += 1;
         if ((s.status || "").toLowerCase().includes("arrived")) acc.arrived += 1;
         if ((s.status || "").toLowerCase().includes("sea") || (s.status || "").toLowerCase().includes("transit")) acc.atSea += 1;
@@ -384,7 +384,7 @@ export default function App() {
     const summary = selectedShipments.reduce(
       (acc, s) => {
         acc.shipments += 1;
-        acc.containers += Number(s.qty || 0);
+        acc.containers += getShipmentBillableQty(s);
         acc.revenue += calcOceanSell(s);
         acc.costs += calcTotalCostUsd(s, activeFxRate);
         acc.grossProfit += calcGrossProfit(s, activeFxRate);
@@ -433,8 +433,12 @@ export default function App() {
       POD: s.pod || "",
       Route: `${s.pol || ""} → ${s.pod || ""}`,
       "Cargo Type": s.cargoType || "",
-      "Container Type": s.containerType || "",
-      Quantity: Number(s.qty || 0),
+      "Load Details": getShipmentLoadDescription(s),
+      "Billing Unit": getShipmentUnitLabel(s),
+      Quantity: getShipmentBillableQty(s),
+      CBM: Number(s.cbm || 0),
+      "Actual Weight KG": Number(s.actualWeightKg || 0),
+      "Volumetric Weight KG": Number(s.volumetricWeightKg || 0),
       "Booking No": s.bookingNo || "Not set",
       Vessel: s.vessel || "Not set",
       "Cut-Off": s.cutOff || "",
@@ -465,8 +469,12 @@ export default function App() {
       POD: s.pod || "",
       Route: `${s.pol || ""} → ${s.pod || ""}`,
       "Cargo Type": s.cargoType || "",
-      "Container Type": s.containerType || "",
-      Quantity: Number(s.qty || 0),
+      "Load Details": getShipmentLoadDescription(s),
+      "Billing Unit": getShipmentUnitLabel(s),
+      Quantity: getShipmentBillableQty(s),
+      CBM: Number(s.cbm || 0),
+      "Actual Weight KG": Number(s.actualWeightKg || 0),
+      "Volumetric Weight KG": Number(s.volumetricWeightKg || 0),
       "Booking No": s.bookingNo || "Not set",
       Vessel: s.vessel || "Not set",
       "Cut-Off": s.cutOff || "",
@@ -591,8 +599,8 @@ export default function App() {
         s.id,
         s.line || "",
         `${s.pol || ""} → ${s.pod || ""}`,
-        `${s.cargoType || ""} / ${s.containerType || ""}`,
-        Number(s.qty || 0),
+        `${s.cargoType || ""} / ${getShipmentLoadDescription(s)}`,
+        getShipmentBillableQty(s),
         s.bookingNo || "Not set",
         s.vessel || "Not set",
         s.cutOff || "",
@@ -610,7 +618,15 @@ export default function App() {
   }
 
   function updateBooking(field, value) {
-    setBookingForm((prev) => ({ ...prev, [field]: value }));
+    setBookingForm((prev) => {
+      if (field !== "cargoType") return { ...prev, [field]: value };
+      return {
+        ...prev,
+        cargoType: value,
+        qty: value === "FCL" ? prev.qty : "",
+        containerType: value === "FCL" ? prev.containerType || "40HC" : "",
+      };
+    });
   }
 
   function updateTransport(field, value) {
@@ -1052,6 +1068,10 @@ export default function App() {
       ...emptyEditForm,
       ...selectedShipment,
       qty: String(selectedShipment.qty || ""),
+      cbm: String(selectedShipment.cbm || ""),
+      actualWeightKg: String(selectedShipment.actualWeightKg || ""),
+      volumetricWeightKg: String(selectedShipment.volumetricWeightKg || ""),
+      packageCount: String(selectedShipment.packageCount || ""),
       buyUsd: String(selectedShipment.buyUsd || ""),
       sellUsd: String(selectedShipment.sellUsd || ""),
       bookingNo: selectedShipment.bookingNo === "Not set" ? "" : selectedShipment.bookingNo,
@@ -1063,12 +1083,19 @@ export default function App() {
 function saveEditShipment(e) {
   e.preventDefault();
   if (!selectedShipment?.id) return;
+  const draftShipment = { ...editForm };
+  const billableQty = getShipmentBillableQty(draftShipment);
 
   const updatedShipment = normalizeShipment({
     ...selectedShipment,
     ...editForm,
     id: selectedShipment.id, // Never change shipment ID during editing.
-    qty: Number(editForm.qty || 0),
+    containerType: isFclShipment(draftShipment) ? editForm.containerType || selectedShipment.containerType || "40HC" : "",
+    qty: isFclShipment(draftShipment) ? Number(editForm.qty || 0) : billableQty,
+    cbm: editForm.cbm,
+    actualWeightKg: editForm.actualWeightKg,
+    volumetricWeightKg: editForm.volumetricWeightKg,
+    packageCount: editForm.packageCount,
     buyUsd: Number(editForm.buyUsd || 0),
     sellUsd: Number(editForm.sellUsd || 0),
     bookingNo: editForm.bookingNo || "Not set",
@@ -1084,8 +1111,15 @@ function saveEditShipment(e) {
 
 function addShipmentFromForm(e) {
     e.preventDefault();
-    if (!bookingForm.customer || !bookingForm.line || !bookingForm.pol || !bookingForm.pod || !bookingForm.qty || !bookingForm.buyUsd || !bookingForm.sellUsd) {
-      alert("Please fill customer, line, route, quantity, buy price, and sell price.");
+    const isFcl = isFclShipment(bookingForm);
+    const isAir = isAirShipment(bookingForm);
+    const billableQty = getShipmentBillableQty(bookingForm);
+    if (!bookingForm.customer || !bookingForm.line || !bookingForm.pol || !bookingForm.pod || !bookingForm.buyUsd || !bookingForm.sellUsd) {
+      alert("Please fill customer, line, route, buy price, and sell price.");
+      return;
+    }
+    if (!billableQty || (isFcl && !bookingForm.qty) || (!isFcl && !isAir && !bookingForm.cbm) || (isAir && !billableQty)) {
+      alert(`Please fill a valid ${getShipmentUnitLabel(bookingForm)} quantity for this shipment.`);
       return;
     }
 
@@ -1097,9 +1131,13 @@ function addShipmentFromForm(e) {
       line: bookingForm.line,
       pol: bookingForm.pol,
       pod: bookingForm.pod,
-      containerType: bookingForm.containerType,
+      containerType: isFcl ? bookingForm.containerType : "",
       cargoType: bookingForm.cargoType,
-      qty: Number(bookingForm.qty),
+      qty: isFcl ? Number(bookingForm.qty) : billableQty,
+      cbm: bookingForm.cbm,
+      actualWeightKg: bookingForm.actualWeightKg,
+      volumetricWeightKg: bookingForm.volumetricWeightKg,
+      packageCount: bookingForm.packageCount,
       buyUsd: Number(bookingForm.buyUsd),
       sellUsd: Number(bookingForm.sellUsd),
       fx: activeFxRate,

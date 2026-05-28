@@ -7,7 +7,7 @@ export function DashboardScreen({ totals, taskDashboard, canSeeFinance, notifica
             <section className="stats">
               <Card icon="📋" title="Total Shipments" value={totals.shipments} />
               <Card icon="🟦" title="FCL Containers" value={totals.fcl} />
-              <Card icon="🟨" title="LCL Shipments" value={totals.lcl} />
+              <Card icon="🟨" title="Partial Shipments" value={totals.lcl} />
               <Card icon="⏰" title="Pending Tasks" value={taskDashboard.pending} />
               <Card icon="⚠️" title="Due Soon / Overdue" value={`${taskDashboard.dueSoon} / ${taskDashboard.overdue}`} />
               <Card icon="💵" title="Net Profit After Expenses" value={canSeeFinance ? money(totals.netProfit) : "—"} />

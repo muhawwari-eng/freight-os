@@ -1,8 +1,12 @@
-import { CargoSelect, CustomerSelect, FormField, PaymentSelect, PaymentSummaryBox, PortSelect, StatusSelect, SupplierSelect } from "../components/freightComponents";
+import { CargoSelect, ContainerSelect, CustomerSelect, FormField, PaymentSelect, PaymentSummaryBox, PortSelect, StatusSelect, SupplierSelect } from "../components/freightComponents";
 import { generateInvoicePdf } from "../services/pdf";
-import { calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanBuy, calcOceanSell, calcTotalCostUsd, calcTransportTry, getExpenses, getPayments, getTaskStatus, getTasks, getTransports, money } from "../utils/freight";
+import { calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanBuy, calcOceanSell, calcTotalCostUsd, calcTransportTry, getExpenses, getPayments, getShipmentBillableQty, getShipmentLoadDescription, getShipmentUnitLabel, getTaskStatus, getTasks, getTransports, isAirShipment, isFclShipment, money } from "../utils/freight";
 
 export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFinance, canEditOperation, startEditShipment, setTab, isEditing, saveEditShipment, editForm, customers, updateEdit, canEditCore, suppliers, ports, setIsEditing, createAutoTasksForShipment, toggleTaskStatus, role, deleteTask }) {
+  const editIsFcl = isFclShipment(editForm);
+  const editIsAir = isAirShipment(editForm);
+  const editUnitLabel = getShipmentUnitLabel(editForm);
+
   return (
           <section className="panel">
             <div className="panelHead">
@@ -30,9 +34,14 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
                   <FormField label="Shipment Status"><StatusSelect value={editForm.status} onChange={(value) => updateEdit("status", value)} /></FormField>
                   <FormField label="Payment Status"><PaymentSelect value={editForm.paymentStatus} onChange={(value) => updateEdit("paymentStatus", value)} disabled={!canEditCore} /></FormField>
                   <FormField label="Cargo Type"><CargoSelect value={editForm.cargoType} onChange={(value) => updateEdit("cargoType", value)} /></FormField>
-                  {canEditCore && <FormField label="Container Quantity"><input type="number" value={editForm.qty} onChange={(e) => updateEdit("qty", e.target.value)} /></FormField>}
-                  {canEditCore && <FormField label="Buy Price / Container USD"><input type="number" value={editForm.buyUsd} onChange={(e) => updateEdit("buyUsd", e.target.value)} /></FormField>}
-                  {canEditCore && <FormField label="Sell Price / Container USD"><input type="number" value={editForm.sellUsd} onChange={(e) => updateEdit("sellUsd", e.target.value)} /></FormField>}
+                  {canEditCore && editIsFcl && <FormField label="Container Type"><ContainerSelect value={editForm.containerType} onChange={(value) => updateEdit("containerType", value)} /></FormField>}
+                  {canEditCore && editIsFcl && <FormField label="Container Quantity"><input type="number" min="0" step="1" value={editForm.qty} onChange={(e) => updateEdit("qty", e.target.value)} /></FormField>}
+                  {canEditCore && !editIsFcl && <FormField label="Package Count"><input type="number" min="0" step="1" value={editForm.packageCount} onChange={(e) => updateEdit("packageCount", e.target.value)} /></FormField>}
+                  {canEditCore && !editIsFcl && <FormField label="CBM"><input type="number" min="0" step="0.001" value={editForm.cbm} onChange={(e) => updateEdit("cbm", e.target.value)} /></FormField>}
+                  {canEditCore && !editIsFcl && <FormField label="Actual Weight KG"><input type="number" min="0" step="0.01" value={editForm.actualWeightKg} onChange={(e) => updateEdit("actualWeightKg", e.target.value)} /></FormField>}
+                  {canEditCore && editIsAir && <FormField label="Volumetric Weight KG"><input type="number" min="0" step="0.01" value={editForm.volumetricWeightKg} onChange={(e) => updateEdit("volumetricWeightKg", e.target.value)} /></FormField>}
+                  {canEditCore && <FormField label={`Buy Price / ${editUnitLabel} USD`}><input type="number" min="0" step="0.01" value={editForm.buyUsd} onChange={(e) => updateEdit("buyUsd", e.target.value)} /></FormField>}
+                  {canEditCore && <FormField label={`Sell Price / ${editUnitLabel} USD`}><input type="number" min="0" step="0.01" value={editForm.sellUsd} onChange={(e) => updateEdit("sellUsd", e.target.value)} /></FormField>}
                 </div>
                 <div className="actions mt">
                   <button className="saveBtn" type="submit">Save Changes</button>
@@ -47,7 +56,8 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
                   <p><b>Booking No:</b> {selectedShipment.bookingNo || "Not set"}</p>
                   <p><b>Vessel:</b> {selectedShipment.vessel || "Not set"}</p>
                   <p><b>Route:</b> {selectedShipment.pol} → {selectedShipment.pod}</p>
-                  <p><b>Containers:</b> {(selectedShipment.cargoType || "FCL") === "LCL" ? "LCL" : `${Number(selectedShipment.qty || 0)} × ${selectedShipment.containerType || ""}`}</p>
+                  <p><b>Load Details:</b> {getShipmentLoadDescription(selectedShipment)}</p>
+                  <p><b>Billable Quantity:</b> {getShipmentBillableQty(selectedShipment)} {getShipmentUnitLabel(selectedShipment)}</p>
                   <p><b>Cut-Off:</b> {selectedShipment.cutOff || "Not set"}</p>
                   <p><b>ETD / ETA:</b> {selectedShipment.etd || "Not set"} / {selectedShipment.eta || "Not set"}</p>
                   <p><b>Status:</b> {selectedShipment.status}</p>
@@ -63,7 +73,7 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
                     </div>
                     <div className="detailGrid">
                       <p><b>Customer Sale:</b> {money(calcOceanSell(selectedShipment))}</p>
-                      <p><b>Ocean Buy Cost:</b> {money(calcOceanBuy(selectedShipment))}</p>
+                      <p><b>Freight Buy Cost:</b> {money(calcOceanBuy(selectedShipment))}</p>
                       <p><b>Local Transport Cost:</b> {money(calcTransportTry(selectedShipment), "TRY")}</p>
                       <p><b>Extra Expenses:</b> {money(calcExpensesUsd(selectedShipment))}</p>
                       <p><b>Total Cost USD:</b> {money(calcTotalCostUsd(selectedShipment, activeFxRate))}</p>

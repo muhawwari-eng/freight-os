@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { CustomerSelect, FormField, PortSelect } from "../components/freightComponents";
-import { calcNetProfit, calcOceanBuy, calcOceanSell, money } from "../utils/freight";
+import { calcNetProfit, calcOceanBuy, calcOceanSell, getShipmentBillableQty, getShipmentLoadDescription, getShipmentUnitLabel, money } from "../utils/freight";
 
 function SortHeader({ label, sortKey, sortConfig, onSort }) {
   const active = sortConfig.key === sortKey;
@@ -18,7 +18,7 @@ function SortHeader({ label, sortKey, sortConfig, onSort }) {
 
 function getSortValue(shipment, key, activeFxRate) {
   if (key === "route") return `${shipment.pol || ""} ${shipment.pod || ""}`;
-  if (key === "containers") return Number(shipment.qty || 0);
+  if (key === "containers") return getShipmentBillableQty(shipment);
   if (key === "buy") return calcOceanBuy(shipment);
   if (key === "sell") return calcOceanSell(shipment);
   if (key === "profit") return calcNetProfit(shipment, activeFxRate);
@@ -68,7 +68,7 @@ export function ShipmentsScreen({ resetShipmentFilters, query, setQuery, shipmen
               <FormField label="POL"><PortSelect value={shipmentFilters.pol} ports={[{ code: "all", name: "All Ports", country: "" }, ...ports]} onChange={(value) => updateShipmentFilter("pol", value)} /></FormField>
               <FormField label="POD"><PortSelect value={shipmentFilters.pod} ports={[{ code: "all", name: "All Ports", country: "" }, ...ports]} onChange={(value) => updateShipmentFilter("pod", value)} /></FormField>
               <FormField label="Status"><select value={shipmentFilters.status} onChange={(e) => updateShipmentFilter("status", e.target.value)}><option value="all">All Statuses</option><option value="Draft">Draft</option><option value="Booked">Booked</option><option value="Loading">Loading</option><option value="In Transit">In Transit</option><option value="At Sea">At Sea</option><option value="At Port">At Port</option><option value="Arrived">Arrived</option><option value="Completed">Completed</option></select></FormField>
-              <FormField label="Cargo Type"><select value={shipmentFilters.cargoType} onChange={(e) => updateShipmentFilter("cargoType", e.target.value)}><option value="all">All Types</option><option value="FCL">FCL</option><option value="LCL">LCL</option><option value="Road">Road</option><option value="Air">Air</option><option value="Cross">Cross</option></select></FormField>
+              <FormField label="Cargo Type"><select value={shipmentFilters.cargoType} onChange={(e) => updateShipmentFilter("cargoType", e.target.value)}><option value="all">All Types</option><option value="FCL">FCL</option><option value="LCL">LCL Sea</option><option value="Air">Air Freight</option><option value="Road">Road Partial</option><option value="Cross">Cross Trade</option></select></FormField>
               <FormField label="Payment"><select value={shipmentFilters.paymentStatus} onChange={(e) => updateShipmentFilter("paymentStatus", e.target.value)}><option value="all">All Payments</option><option value="Unpaid">Unpaid</option><option value="Partially Paid">Partially Paid</option><option value="Fully Paid">Fully Paid</option></select></FormField>
             </div>
 
@@ -79,7 +79,7 @@ export function ShipmentsScreen({ resetShipmentFilters, query, setQuery, shipmen
                     <SortHeader label="Shipment" sortKey="id" sortConfig={sortConfig} onSort={sortBy} />
                     <SortHeader label="Entry Date" sortKey="entryDate" sortConfig={sortConfig} onSort={sortBy} />
                     <SortHeader label="Type" sortKey="cargoType" sortConfig={sortConfig} onSort={sortBy} />
-                    <SortHeader label="Containers" sortKey="containers" sortConfig={sortConfig} onSort={sortBy} />
+                    <SortHeader label="Load / Units" sortKey="containers" sortConfig={sortConfig} onSort={sortBy} />
                     <SortHeader label="Vessel" sortKey="vessel" sortConfig={sortConfig} onSort={sortBy} />
                     <SortHeader label="Customer" sortKey="customer" sortConfig={sortConfig} onSort={sortBy} />
                     <SortHeader label="Route" sortKey="route" sortConfig={sortConfig} onSort={sortBy} />
@@ -100,7 +100,11 @@ export function ShipmentsScreen({ resetShipmentFilters, query, setQuery, shipmen
                       <td>{s.id}</td>
                       <td>{s.entryDate || "Not set"}</td>
                       <td><span className={`typeBadge ${(s.cargoType || "FCL").toLowerCase()}`}>{s.cargoType || "FCL"}</span></td>
-                      <td>{(s.cargoType || "FCL") === "LCL" ? "LCL" : `${Number(s.qty || 0)} × ${s.containerType || ""}`}</td>
+                      <td>
+                        {getShipmentLoadDescription(s)}
+                        <br />
+                        <small>{getShipmentBillableQty(s)} {getShipmentUnitLabel(s)}</small>
+                      </td>
                       <td>{s.vessel || "Not set"}</td>
                       <td>{s.customer}</td>
                       <td>{s.pol} → {s.pod}</td>

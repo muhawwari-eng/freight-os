@@ -1,7 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { COMPANY_INFO, FSC_LOGO_DATA_URL } from "../data/defaults";
-import { calcOceanSell, getPaymentSummary, getShipmentFinancialLedger, money, paymentAmountUsd, safeFileName } from "../utils/freight";
+import { calcOceanSell, getPaymentSummary, getShipmentBillableQty, getShipmentFinancialLedger, getShipmentLoadDescription, getShipmentUnitLabel, isFclShipment, money, paymentAmountUsd, safeFileName } from "../utils/freight";
 
 export function getInvoiceNumber(shipment) {
   const year = new Date().getFullYear();
@@ -11,8 +11,8 @@ export function getInvoiceNumber(shipment) {
 }
 
 export function getContainerDescription(shipment) {
-  if ((shipment?.cargoType || "FCL") === "LCL") return "LCL Shipment";
-  return `${Number(shipment?.qty || 0)} × ${shipment?.containerType || "Container"}`;
+  if (isFclShipment(shipment)) return `${Number(shipment?.qty || 0)} x ${shipment?.containerType || "Container"}`;
+  return getShipmentLoadDescription(shipment);
 }
 
 export function generateInvoicePdf(shipment, exchangeRate) {
@@ -144,7 +144,7 @@ export function generateInvoicePdf(shipment, exchangeRate) {
   const columns = [
     ["Cargo Type", shipment.cargoType || "FCL"],
     ["Route", `${shipment.pol || ""} - ${shipment.pod || ""}`],
-    ["Containers", containerText],
+    ["Load", containerText],
     ["Vessel", shipment.vessel || "Not set"],
     ["Booking No", bookingNo],
   ];
@@ -171,7 +171,7 @@ export function generateInvoicePdf(shipment, exchangeRate) {
     head: [["Description", "Qty", "Unit Price (USD)", "Total (USD)"]],
     body: [[
       `Freight service - ${routeText} port`,
-      Number(shipment.qty || 0),
+      `${getShipmentBillableQty(shipment)} ${getShipmentUnitLabel(shipment)}`,
       money(shipment.sellUsd || 0),
       money(customerAmount),
     ]],

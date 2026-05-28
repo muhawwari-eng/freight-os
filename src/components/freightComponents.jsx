@@ -40,9 +40,9 @@ export function CargoSelect({ value, onChange }) {
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)}>
       <option value="FCL">FCL - Full Container Load</option>
-      <option value="LCL">LCL - Less Container Load</option>
-      <option value="Road">Road Transport / النقل البري</option>
-      <option value="Air">Air Freight / الشحن الجوي</option>
+      <option value="LCL">LCL Sea - Partial / CBM</option>
+      <option value="Air">Air Freight - Partial / KG</option>
+      <option value="Road">Road Partial - CBM</option>
       <option value="Cross">Cross Trade / Cross Booking</option>
     </select>
   );

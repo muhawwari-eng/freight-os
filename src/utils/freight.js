@@ -104,13 +104,47 @@ export function isReminderAlreadySent(sent, event) {
   return Boolean(sent?.[getReminderSentKey(event.key, event.eventDate)] || sent?.[event.key] === eventDate);
 }
 
+export function isFclShipment(shipment) {
+  return (shipment?.cargoType || "FCL") === "FCL";
+}
+
+export function isAirShipment(shipment) {
+  return (shipment?.cargoType || "FCL") === "Air";
+}
+
+export function getChargeableWeightKg(shipment) {
+  return Math.max(Number(shipment?.actualWeightKg || 0), Number(shipment?.volumetricWeightKg || 0));
+}
+
+export function getShipmentBillableQty(shipment) {
+  if (isFclShipment(shipment)) return Number(shipment?.qty || 0);
+  if (isAirShipment(shipment)) return getChargeableWeightKg(shipment);
+  return Number(shipment?.cbm || shipment?.qty || 0);
+}
+
+export function getShipmentUnitLabel(shipment) {
+  if (isFclShipment(shipment)) return "Container";
+  if (isAirShipment(shipment)) return "Chargeable KG";
+  return "CBM";
+}
+
+export function getShipmentLoadDescription(shipment) {
+  if (isFclShipment(shipment)) return `${Number(shipment?.qty || 0)} x ${shipment?.containerType || "Container"}`;
+  const pieces = Number(shipment?.packageCount || 0) ? `${Number(shipment.packageCount)} pkg` : "Packages not set";
+  const cbm = Number(shipment?.cbm || 0) ? `${Number(shipment.cbm)} CBM` : "CBM not set";
+  const actual = Number(shipment?.actualWeightKg || 0) ? `${Number(shipment.actualWeightKg)} KG actual` : "Actual KG not set";
+  const volumetric = Number(shipment?.volumetricWeightKg || 0) ? `${Number(shipment.volumetricWeightKg)} KG volumetric` : "Volumetric KG not set";
+  if (isAirShipment(shipment)) return `${pieces} / ${actual} / ${volumetric} / Chargeable ${getChargeableWeightKg(shipment)} KG`;
+  return `${pieces} / ${cbm} / ${actual}`;
+}
+
 export function calcOceanBuy(shipment) {
-  return Number(shipment.buyUsd || 0) * Number(shipment.qty || 0);
+  return Number(shipment.buyUsd || 0) * getShipmentBillableQty(shipment);
 }
 
 export function calcOceanSell(shipment) {
   // Customer sale / revenue only. Expenses must NOT be added here.
-  return Number(shipment.sellUsd || 0) * Number(shipment.qty || 0);
+  return Number(shipment.sellUsd || 0) * getShipmentBillableQty(shipment);
 }
 
 export function calcSingleTransportTry(transport) {
@@ -452,6 +486,10 @@ export function normalizeShipment(shipment) {
     createdAt,
     entryDate: shipment.entryDate || toLocalDateKey(createdAt),
     cargoType: shipment.cargoType || "FCL",
+    cbm: shipment.cbm || "",
+    actualWeightKg: shipment.actualWeightKg || "",
+    volumetricWeightKg: shipment.volumetricWeightKg || "",
+    packageCount: shipment.packageCount || "",
     bookingNo: shipment.bookingNo || "Not set",
     vessel: shipment.vessel || "Not set",
     cutOff: shipment.cutOff || "",
