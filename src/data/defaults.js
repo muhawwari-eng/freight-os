@@ -274,6 +274,7 @@ export const emptyFinancialInvoiceForm = {
   dueDate: "",
   party: "",
   amount: "",
+  taxRate: "0",
   currency: "USD",
   fxRate: "",
   note: "",
@@ -282,6 +283,7 @@ export const emptyFinancialInvoiceForm = {
 export const emptyFinancialPaymentForm = {
   invoiceId: "",
   amount: "",
+  taxRate: "0",
   currency: "USD",
   fxRate: "",
   paidDate: getLocalTodayDateKey(),

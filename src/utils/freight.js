@@ -172,8 +172,14 @@ export function paymentAmountUsd(payment, shipment, exchangeRate) {
   return amount;
 }
 
-export function financialInvoiceAmountUsd(invoice, shipment, exchangeRate) {
+export function invoiceTaxAmount(invoice) {
   const amount = Number(invoice.amount || 0);
+  const taxRate = Number(invoice.taxRate || 0);
+  return amount * taxRate / 100;
+}
+
+export function financialInvoiceAmountUsd(invoice, shipment, exchangeRate) {
+  const amount = Number(invoice.amount || 0) + invoiceTaxAmount(invoice);
   if ((invoice.currency || "USD") === "TRY") return amount / getRate({ fx: invoice.fxRate || shipment?.fx }, exchangeRate);
   return amount;
 }
@@ -258,11 +264,13 @@ export function getShipmentFinancialLedger(shipment, exchangeRate) {
       : [];
     const appliedPayments = [...linked, ...compatibleUnlinked];
     const totalUsd = financialInvoiceAmountUsd(invoice, shipment, exchangeRate);
+    const taxUsd = financialInvoiceAmountUsd({ ...invoice, amount: invoiceTaxAmount(invoice), taxRate: 0 }, shipment, exchangeRate);
     const paidUsd = appliedPayments.reduce((sum, payment) => sum + paymentAmountUsd(payment, shipment, exchangeRate), 0);
     const remainingUsd = Math.max(totalUsd - paidUsd, 0);
     return {
       ...invoice,
       paymentType,
+      taxUsd,
       totalUsd,
       paidUsd,
       remainingUsd,

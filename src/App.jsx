@@ -47,6 +47,7 @@ export default function App() {
     line: "all",
     pol: "all",
     pod: "all",
+    entryMonth: "",
     status: "all",
     cargoType: "all",
     paymentStatus: "all",
@@ -228,6 +229,7 @@ export default function App() {
       line: "all",
       pol: "all",
       pod: "all",
+      entryMonth: "",
       status: "all",
       cargoType: "all",
       paymentStatus: "all",
@@ -244,6 +246,7 @@ export default function App() {
         (shipmentFilters.line === "all" || s.line === shipmentFilters.line) &&
         (shipmentFilters.pol === "all" || s.pol === shipmentFilters.pol) &&
         (shipmentFilters.pod === "all" || s.pod === shipmentFilters.pod) &&
+        (!shipmentFilters.entryMonth || getMonthKey(getShipmentReportDate(s)) === shipmentFilters.entryMonth) &&
         (shipmentFilters.status === "all" || s.status === shipmentFilters.status) &&
         (shipmentFilters.cargoType === "all" || s.cargoType === shipmentFilters.cargoType) &&
         (shipmentFilters.paymentStatus === "all" || s.paymentStatus === shipmentFilters.paymentStatus);
@@ -1316,6 +1319,7 @@ function addShipmentFromForm(e) {
         invoiceNo,
         party: invoiceForm.party.trim(),
         amount: Number(invoiceForm.amount || 0),
+        taxRate: Number(invoiceForm.taxRate || 0),
         fxRate: Number(invoiceForm.fxRate || activeFxRate || 1),
         createdAt: editingInvoiceId ? undefined : new Date().toISOString(),
         updatedAt: editingInvoiceId ? new Date().toISOString() : undefined,
@@ -1371,6 +1375,7 @@ function addShipmentFromForm(e) {
       purchaseType: getInvoicePaymentType(invoice),
       company: invoice.party || "Not set",
       amount: Number(invoicePaymentForm.amount || 0),
+      taxRate: Number(invoicePaymentForm.taxRate || 0),
       currency: invoicePaymentForm.currency || "USD",
       fxRate: Number(invoicePaymentForm.fxRate || activeFxRate || 1),
       paidDate: invoicePaymentForm.paidDate || getLocalTodayDateKey(),
