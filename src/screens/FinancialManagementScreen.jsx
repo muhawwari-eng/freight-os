@@ -4,7 +4,7 @@ import { emptyFinancialInvoiceForm, emptyFinancialPaymentForm, getLocalTodayDate
 import { generateInvoicePdf, generateProfitReportPdf } from "../services/pdf";
 import { getNextFinancialInvoiceNumber, getShipmentFinancialLedger, money, paymentAmountUsd } from "../utils/freight";
 
-const expenseCategories = ["Ground Rent", "Bill of Lading", "Storage", "Port Charges", "Lashing"];
+const expenseCategories = ["Demurage", "Bill of Lading", "Storage", "Port Charges", "Lashing"];
 const saleCategories = ["Freight Sale", ...expenseCategories, "Other Income"];
 const purchaseCategories = ["Ocean Freight", "Local Transport", "Expense", ...expenseCategories, "Other"];
 
