@@ -276,6 +276,94 @@ button {
   text-align: center;
 }
 
+.detailSubtabs {
+  margin-top: 20px;
+}
+
+.detailHero {
+  align-items: stretch;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1.2fr 0.7fr 1.1fr;
+  margin: 18px 0;
+}
+
+.detailHero > div {
+  background: rgba(14, 39, 65, 0.66);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  border-radius: 18px;
+  padding: 16px;
+}
+
+.detailHero small {
+  color: #93c5fd;
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.detailHero h3,
+.detailHero b {
+  color: #f8fafc;
+  margin: 0;
+}
+
+.timeline {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  max-width: 760px;
+}
+
+.timelineItem {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 18px 1fr;
+  position: relative;
+}
+
+.timelineItem:not(:last-child)::after {
+  background: rgba(56, 189, 248, 0.24);
+  content: "";
+  height: calc(100% + 14px);
+  left: 7px;
+  position: absolute;
+  top: 15px;
+  width: 2px;
+}
+
+.timelineDot {
+  background: #38bdf8;
+  border: 3px solid rgba(56, 189, 248, 0.22);
+  border-radius: 999px;
+  height: 14px;
+  margin-top: 4px;
+  width: 14px;
+  z-index: 1;
+}
+
+.timelineItem > div {
+  background: rgba(14, 39, 65, 0.66);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 16px;
+  padding: 14px;
+}
+
+.timelineItem b {
+  color: #f8fafc;
+}
+
+.timelineItem p {
+  color: #7dd3fc;
+  font-weight: 800;
+  margin: 6px 0;
+}
+
+.timelineItem small {
+  color: #cbd5e1;
+}
+
 .stackList {
   display: grid;
   gap: 14px;
@@ -876,6 +964,10 @@ tr:hover {
 
   .dashboardSubtabs button {
     white-space: nowrap;
+  }
+
+  .detailHero {
+    grid-template-columns: 1fr;
   }
 }
 
