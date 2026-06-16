@@ -6,7 +6,7 @@ import Login from "./Login";
 import { supabase } from "./supabase";
 import { DEFAULT_OPERATION_EMAIL, EMAILJS_PUBLIC_KEY, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, REMINDER_EMAIL_ENDPOINT } from "./config/email";
 import { defaultFxSettings, defaultShipments, defaultSuppliers, defaultWorldPorts, emptyBookingForm, emptyCustomerForm, emptyEditForm, emptyExpenseForm, emptyPaymentForm, emptyPortForm, emptyReceivableForm, emptySupplierForm, emptyTaskForm, emptyTransportForm, getLocalTodayDateKey, getNextCustomerId, getNextSupplierId } from "./data/defaults";
-import { addDays, buildReminderMessage, calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanSell, calcTotalCostUsd, dedupeShipments, getCurrentMonthKey, getDateRangeLabel, getDaysLeft, getExpenses, getFinancialInvoices, getInvoicePaymentType, getMonthKey, getNextFinancialInvoiceNumber, getNextShipmentId, getPaymentSummary, getPayments, getRate, getReminderEventsForShipment, getReminderSentKey, getShipmentBillableQty, getShipmentFinancialLedger, getShipmentLoadDescription, getShipmentReportDate, getShipmentUnitLabel, getTaskStatus, getTasks, getTransports, isAirShipment, isDateInRange, isFclShipment, isReminderAlreadySent, money, normalizeShipment, paymentAmountUsd, safeFileName, toDateKey } from "./utils/freight";
+import { addDays, buildReminderMessage, calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanSell, calcTotalCostUsd, dedupeShipments, getCurrentMonthKey, getDateRangeLabel, getDaysLeft, getExpenses, getFinancialInvoices, getInvoicePaymentType, getMonthKey, getNextFinancialInvoiceNumber, getNextShipmentId, getPaymentSummary, getPayments, getRate, getReminderEventsForShipment, getReminderSentKey, getShipmentBillableQty, getShipmentDocuments, getShipmentFinancialLedger, getShipmentLoadDescription, getShipmentReportDate, getShipmentUnitLabel, getTaskStatus, getTasks, getTransports, isAirShipment, isDateInRange, isFclShipment, isReminderAlreadySent, money, normalizeShipment, paymentAmountUsd, safeFileName, toDateKey } from "./utils/freight";
 import { ownedTables, readOwnedRows, saveOwnedRows } from "./services/ownedStorage";
 import { getTitle } from "./utils/titles";
 import { DashboardScreen } from "./screens/DashboardScreen";
@@ -1236,6 +1236,52 @@ export default function App() {
     setIsEditing(true);
   }
 
+  function saveShipmentDocument(shipmentId, file, documentType = "Other") {
+    if (!file) return;
+    if (file.size > 4 * 1024 * 1024) {
+      alert("File is too large. Please upload files up to 4 MB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const newDocument = {
+        id: `DOC-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        name: file.name,
+        type: documentType || "Other",
+        mimeType: file.type || "application/octet-stream",
+        size: file.size,
+        uploadedAt: new Date().toISOString(),
+        dataUrl: reader.result,
+      };
+
+      let updatedSelected = null;
+      setShipments((previous) => previous.map((shipment) => {
+        if (shipment.id !== shipmentId) return shipment;
+        const updated = normalizeShipment({ ...shipment, documents: [newDocument, ...getShipmentDocuments(shipment)] });
+        updatedSelected = updated;
+        return updated;
+      }));
+      if (updatedSelected) setSelectedShipment(updatedSelected);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function deleteShipmentDocument(shipmentId, documentId) {
+    if (!confirm("Delete this document?")) return;
+    let updatedSelected = null;
+    setShipments((previous) => previous.map((shipment) => {
+      if (shipment.id !== shipmentId) return shipment;
+      const updated = normalizeShipment({
+        ...shipment,
+        documents: getShipmentDocuments(shipment).filter((document) => document.id !== documentId),
+      });
+      updatedSelected = updated;
+      return updated;
+    }));
+    if (updatedSelected) setSelectedShipment(updatedSelected);
+  }
+
 function saveEditShipment(e) {
   e.preventDefault();
   if (!selectedShipment?.id) return;
@@ -1970,7 +2016,7 @@ function importLocalBackup(event) {
 
         {tab === "dashboard" && <DashboardScreen totals={totals} taskDashboard={taskDashboard} canSeeFinance={canSeeFinance} notifications={notifications} clearNotifications={clearNotifications} markNotificationRead={markNotificationRead} actionCenter={actionCenter} financialDashboard={financialDashboard} cashPosition={cashPosition} monthlyFinancialDashboard={monthlyFinancialDashboard} financialMonth={financialMonth} setFinancialMonth={setFinancialMonth} dashboardCharts={dashboardCharts} shipments={shipments} activeFxRate={activeFxRate} openShipmentDetails={openShipmentDetails} />}
 
-        {tab === "details" && selectedShipment && <ShipmentDetailsScreen selectedShipment={selectedShipment} activeFxRate={activeFxRate} canSeeFinance={canSeeFinance} canEditOperation={canEditOperation} startEditShipment={startEditShipment} setTab={setTab} isEditing={isEditing} saveEditShipment={saveEditShipment} editForm={editForm} customers={customers} updateEdit={updateEdit} canEditCore={canEditCore} suppliers={suppliers} ports={ports} setIsEditing={setIsEditing} createAutoTasksForShipment={createAutoTasksForShipment} toggleTaskStatus={toggleTaskStatus} role={role} deleteTask={deleteTask} />}
+        {tab === "details" && selectedShipment && <ShipmentDetailsScreen selectedShipment={selectedShipment} activeFxRate={activeFxRate} canSeeFinance={canSeeFinance} canEditOperation={canEditOperation} startEditShipment={startEditShipment} setTab={setTab} isEditing={isEditing} saveEditShipment={saveEditShipment} editForm={editForm} customers={customers} updateEdit={updateEdit} canEditCore={canEditCore} suppliers={suppliers} ports={ports} setIsEditing={setIsEditing} createAutoTasksForShipment={createAutoTasksForShipment} toggleTaskStatus={toggleTaskStatus} role={role} deleteTask={deleteTask} saveShipmentDocument={saveShipmentDocument} deleteShipmentDocument={deleteShipmentDocument} />}
 
         {tab === "shipments" && <ShipmentsScreen resetShipmentFilters={resetShipmentFilters} query={query} setQuery={setQuery} shipmentFilters={shipmentFilters} customers={customers} updateShipmentFilter={updateShipmentFilter} suppliers={suppliers} setLineFilter={setLineFilter} ports={ports} canSeeFinance={canSeeFinance} role={role} filtered={filtered} openShipmentDetails={openShipmentDetails} activeFxRate={activeFxRate} deleteShipment={deleteShipment} />}
 

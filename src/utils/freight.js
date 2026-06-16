@@ -26,6 +26,10 @@ export function getFinancialInvoices(shipment) {
   return Array.isArray(shipment.financialInvoices) ? shipment.financialInvoices : [];
 }
 
+export function getShipmentDocuments(shipment) {
+  return Array.isArray(shipment.documents) ? shipment.documents : [];
+}
+
 export function getNextFinancialInvoiceNumber(shipment, invoiceType) {
   const code = invoiceType === "Sale" ? "SI" : "PI";
   const savedSequence = Number(shipment?.financialInvoiceSequences?.[invoiceType.toLowerCase()] || 0);
@@ -509,6 +513,7 @@ export function normalizeShipment(shipment) {
     payments: getPayments(shipment),
     financialInvoices: getFinancialInvoices(shipment),
     financialInvoiceSequences: shipment.financialInvoiceSequences || { sale: 0, purchase: 0 },
+    documents: getShipmentDocuments(shipment),
     tasks: getTasks(shipment),
     emailReminderSent: shipment.emailReminderSent || {},
     tracking: shipment.tracking || {},

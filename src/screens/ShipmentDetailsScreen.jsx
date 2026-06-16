@@ -1,7 +1,25 @@
 import { useState } from "react";
 import { CargoSelect, ContainerSelect, CustomerSelect, FormField, PaymentSelect, PaymentSummaryBox, PortSelect, StatusSelect, SupplierSelect } from "../components/freightComponents";
 import { generateInvoicePdf } from "../services/pdf";
-import { calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanBuy, calcOceanSell, calcTotalCostUsd, calcTransportTry, getExpenses, getPayments, getShipmentBillableQty, getShipmentLoadDescription, getShipmentUnitLabel, getTaskStatus, getTasks, getTransports, isAirShipment, isFclShipment, money } from "../utils/freight";
+import { calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanBuy, calcOceanSell, calcTotalCostUsd, calcTransportTry, getExpenses, getPayments, getShipmentBillableQty, getShipmentDocuments, getShipmentLoadDescription, getShipmentUnitLabel, getTaskStatus, getTasks, getTransports, isAirShipment, isFclShipment, money } from "../utils/freight";
+
+const documentTypes = ["Bill of Lading", "Commercial Invoice", "Packing List", "Freight Invoice", "Customs", "Other"];
+
+function formatFileSize(size) {
+  const value = Number(size || 0);
+  if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
+  if (value >= 1024) return `${Math.round(value / 1024)} KB`;
+  return `${value} B`;
+}
+
+function downloadDocument(document) {
+  const link = window.document.createElement("a");
+  link.href = document.dataUrl;
+  link.download = document.name || "shipment-document";
+  window.document.body.appendChild(link);
+  link.click();
+  window.document.body.removeChild(link);
+}
 
 function DetailSubtabs({ activeTab, setActiveTab, canSeeFinance }) {
   const tabs = ["overview", canSeeFinance && "finance", "tasks", "documents", "timeline"].filter(Boolean);
@@ -71,8 +89,9 @@ function TimelineItem({ label, date, note }) {
   );
 }
 
-export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFinance, canEditOperation, startEditShipment, setTab, isEditing, saveEditShipment, editForm, customers, updateEdit, canEditCore, suppliers, ports, setIsEditing, createAutoTasksForShipment, toggleTaskStatus, role, deleteTask }) {
+export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFinance, canEditOperation, startEditShipment, setTab, isEditing, saveEditShipment, editForm, customers, updateEdit, canEditCore, suppliers, ports, setIsEditing, createAutoTasksForShipment, toggleTaskStatus, role, deleteTask, saveShipmentDocument, deleteShipmentDocument }) {
   const [detailTab, setDetailTab] = useState("overview");
+  const [documentType, setDocumentType] = useState("Bill of Lading");
   const editIsFcl = isFclShipment(editForm);
   const editIsAir = isAirShipment(editForm);
   const editUnitLabel = getShipmentUnitLabel(editForm);
@@ -80,6 +99,7 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
   const transports = getTransports(selectedShipment);
   const expenses = getExpenses(selectedShipment);
   const payments = getPayments(selectedShipment);
+  const documents = getShipmentDocuments(selectedShipment);
 
   return (
     <section className="panel shipmentDetailsPanel">
@@ -209,10 +229,68 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
           )}
 
           {detailTab === "documents" && (
-            <div className="emptyState">
-              <b>Documents workspace is ready.</b>
-              <p>Next we can add upload slots for Bill of Lading, invoices, packing list, commercial invoice, and shipment images.</p>
-            </div>
+            <>
+              <div className="panelHead">
+                <div>
+                  <h3>Documents</h3>
+                  <p>Upload and manage shipment files. Files up to 4 MB are stored with the shipment.</p>
+                </div>
+                {canEditOperation && (
+                  <div className="actions documentUpload">
+                    <FormField label="Document Type">
+                      <select value={documentType} onChange={(event) => setDocumentType(event.target.value)}>
+                        {documentTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+                      </select>
+                    </FormField>
+                    <label className="saveBtn uploadBtn">
+                      Upload File
+                      <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx" onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) saveShipmentDocument(selectedShipment.id, file, documentType);
+                        event.target.value = "";
+                      }} />
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              {documents.length === 0 ? (
+                <div className="emptyState">
+                  <b>No documents uploaded yet.</b>
+                  <p>Bill of Lading, invoices, packing list, customs files, and shipment images will appear here.</p>
+                </div>
+              ) : (
+                <div className="tableWrap mt">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Type</th>
+                        <th>File</th>
+                        <th>Size</th>
+                        <th>Uploaded</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {documents.map((document) => (
+                        <tr key={document.id}>
+                          <td><span className="badge">{document.type || "Other"}</span></td>
+                          <td>{document.name}</td>
+                          <td>{formatFileSize(document.size)}</td>
+                          <td>{document.uploadedAt ? new Date(document.uploadedAt).toLocaleString() : "Not set"}</td>
+                          <td>
+                            <div className="actions">
+                              <button className="ghostBtn" onClick={() => downloadDocument(document)}>Download</button>
+                              {canEditOperation && <button className="dangerBtn" onClick={() => deleteShipmentDocument(selectedShipment.id, document.id)}>Delete</button>}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
           )}
 
           {detailTab === "timeline" && (

@@ -364,6 +364,20 @@ button {
   color: #cbd5e1;
 }
 
+.documentUpload {
+  align-items: end;
+}
+
+.uploadBtn {
+  display: inline-block;
+  margin-top: 0;
+  position: relative;
+}
+
+.uploadBtn input {
+  display: none;
+}
+
 .stackList {
   display: grid;
   gap: 14px;
