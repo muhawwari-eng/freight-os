@@ -163,87 +163,6 @@ th, td {
   padding: 20px;
 }
 
-.actionList {
-  display: grid;
-  gap: 10px;
-  margin-top: 16px;
-}
-
-.actionItem {
-  display: grid;
-  grid-template-columns: 86px 1fr;
-  gap: 14px;
-  width: 100%;
-  text-align: left;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-left: 5px solid #64748b;
-  border-radius: 12px;
-  padding: 14px;
-}
-
-.actionItem.high {
-  border-left-color: #dc2626;
-}
-
-.actionItem.warning {
-  border-left-color: #d97706;
-}
-
-.actionItem.info {
-  border-left-color: #2563eb;
-}
-
-.actionSeverity {
-  align-self: start;
-  background: #e2e8f0;
-  border-radius: 999px;
-  color: #334155;
-  font-size: 11px;
-  font-weight: 800;
-  padding: 6px 8px;
-  text-align: center;
-}
-
-.actionItem.high .actionSeverity {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.actionItem.warning .actionSeverity {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.actionItem.info .actionSeverity {
-  background: #dbeafe;
-  color: #1e40af;
-}
-
-.actionItem small {
-  color: #64748b;
-  display: block;
-  margin-top: 3px;
-}
-
-.actionItem p {
-  color: #334155;
-  font-weight: 500;
-  margin: 7px 0 0;
-}
-
-.emptyState {
-  background: #f8fafc;
-  border: 1px dashed #cbd5e1;
-  border-radius: 12px;
-  padding: 16px;
-}
-
-.emptyState p {
-  color: #64748b;
-  margin: 6px 0 0;
-}
-
 @media (max-width: 800px) {
   .hero, .panelHead {
     flex-direction: column;
@@ -252,10 +171,6 @@ th, td {
   }
 
   .stats, .formGrid, .twoCols {
-    grid-template-columns: 1fr;
-  }
-
-  .actionItem {
     grid-template-columns: 1fr;
   }
 

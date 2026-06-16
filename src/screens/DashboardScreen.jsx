@@ -49,11 +49,14 @@ export function DashboardScreen({ totals, taskDashboard, canSeeFinance, notifica
                 {actionCenter.map((item) => (
                   <button className={`actionItem ${item.severity}`} key={item.id} onClick={() => openShipmentDetails(item.shipment)}>
                     <span className="actionSeverity">{item.severity.toUpperCase()}</span>
-                    <span>
-                      <b>{item.title}</b>
-                      <small>{item.type} | {item.meta}</small>
-                      <p>{item.detail}</p>
+                    <span className="actionBody">
+                      <span className="actionTopline">
+                        <b>{item.title}</b>
+                        <small>{item.type} | {item.meta}</small>
+                      </span>
+                      <span className="actionDetail">{item.detail}</span>
                     </span>
+                    <span className="actionOpen">Open</span>
                   </button>
                 ))}
                 {actionCenter.length === 0 && (
