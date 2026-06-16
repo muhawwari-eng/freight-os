@@ -2,6 +2,92 @@ import { useState } from "react";
 import { Card, DashboardCharts, FormField, ProfitCard, ShipmentCard } from "../components/freightComponents";
 import { money } from "../utils/freight";
 
+function MetricIcon({ type }) {
+  const common = { fill: "none", stroke: "currentColor", strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: "2" };
+  const icons = {
+    shipment: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path {...common} d="M4 15h16l-2 4H6l-2-4Z" />
+        <path {...common} d="M7 15V8h10v7" />
+        <path {...common} d="M9 8V5h6v3" />
+        <path {...common} d="M8 12h2M12 12h2M16 12h1" />
+      </svg>
+    ),
+    container: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path {...common} d="M3 7h18v11H3z" />
+        <path {...common} d="M7 7v11M11 7v11M15 7v11M19 7v11" />
+        <path {...common} d="M5 5h14" />
+      </svg>
+    ),
+    partial: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path {...common} d="M4 8h7v7H4zM13 5h7v7h-7zM13 14h5v5h-5z" />
+      </svg>
+    ),
+    task: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path {...common} d="M8 6h12M8 12h12M8 18h12" />
+        <path {...common} d="m3.5 6 1 1 2-2M3.5 12l1 1 2-2M3.5 18l1 1 2-2" />
+      </svg>
+    ),
+    alert: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path {...common} d="M12 3 2.8 19h18.4L12 3Z" />
+        <path {...common} d="M12 9v4M12 17h.01" />
+      </svg>
+    ),
+    profit: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path {...common} d="M4 17 9 12l4 4 7-8" />
+        <path {...common} d="M15 8h5v5" />
+        <path {...common} d="M5 21h14" />
+      </svg>
+    ),
+    receivable: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path {...common} d="M4 6h16v12H4z" />
+        <path {...common} d="M4 9h16" />
+        <path {...common} d="M8 14h5" />
+      </svg>
+    ),
+    collected: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path {...common} d="M12 3v18" />
+        <path {...common} d="M16 7.5c-.7-1-2-1.5-3.5-1.5-2 0-3.5 1-3.5 2.5s1.2 2.1 3.7 2.7c2.4.6 3.8 1.3 3.8 3S15 18 12.6 18c-1.8 0-3.3-.6-4.2-1.8" />
+      </svg>
+    ),
+    payable: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path {...common} d="M4 7h16v13H4z" />
+        <path {...common} d="M8 7V4h8v3" />
+        <path {...common} d="M9 13h6M9 17h4" />
+      </svg>
+    ),
+    paid: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path {...common} d="M20 7 10 17l-5-5" />
+        <path {...common} d="M4 20h16" />
+      </svg>
+    ),
+    cash: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path {...common} d="M4 8h16v10H4z" />
+        <path {...common} d="M8 8V6h8v2" />
+        <path {...common} d="M12 11v4M10 13h4" />
+      </svg>
+    ),
+    invoice: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path {...common} d="M7 3h10l2 2v16l-3-2-2 2-2-2-2 2-2-2-3 2V5l2-2Z" />
+        <path {...common} d="M9 8h6M9 12h6M9 16h4" />
+      </svg>
+    ),
+  };
+
+  return <span className="metricIcon">{icons[type] || icons.shipment}</span>;
+}
+
 function ActionList({ items, openShipmentDetails, limit }) {
   const visibleItems = typeof limit === "number" ? items.slice(0, limit) : items;
 
@@ -37,12 +123,12 @@ export function DashboardScreen({ totals, taskDashboard, canSeeFinance, notifica
   return (
     <>
       <section className="stats">
-        <Card icon="S" title="Total Shipments" value={totals.shipments} />
-        <Card icon="F" title="FCL Containers" value={totals.fcl} />
-        <Card icon="P" title="Partial Shipments" value={totals.lcl} />
-        <Card icon="T" title="Pending Tasks" value={taskDashboard.pending} />
-        <Card icon="!" title="Due Soon / Overdue" value={`${taskDashboard.dueSoon} / ${taskDashboard.overdue}`} />
-        <Card icon="$" title="Net Profit After Expenses" value={canSeeFinance ? money(totals.netProfit) : "-"} />
+        <Card icon={<MetricIcon type="shipment" />} title="Total Shipments" value={totals.shipments} />
+        <Card icon={<MetricIcon type="container" />} title="FCL Containers" value={totals.fcl} />
+        <Card icon={<MetricIcon type="partial" />} title="Partial Shipments" value={totals.lcl} />
+        <Card icon={<MetricIcon type="task" />} title="Pending Tasks" value={taskDashboard.pending} />
+        <Card icon={<MetricIcon type="alert" />} title="Due Soon / Overdue" value={`${taskDashboard.dueSoon} / ${taskDashboard.overdue}`} />
+        <Card icon={<MetricIcon type="profit" />} title="Net Profit After Expenses" value={canSeeFinance ? money(totals.netProfit) : "-"} />
       </section>
 
       <div className="dashboardSubtabs">
@@ -124,11 +210,11 @@ export function DashboardScreen({ totals, taskDashboard, canSeeFinance, notifica
       {dashboardTab === "finance" && canSeeFinance && (
         <>
           <section className="stats">
-            <Card icon="$" title="Customer Receivables" value={money(financialDashboard.customerRemaining)} />
-            <Card icon="$" title="Collected From Clients" value={money(financialDashboard.customerCollected)} />
-            <Card icon="$" title="Supplier Payables" value={money(financialDashboard.supplierPayables)} />
-            <Card icon="$" title="Paid To Suppliers" value={money(financialDashboard.supplierPaid)} />
-            <Card icon="$" title="Cash Position" value={money(cashPosition)} />
+            <Card icon={<MetricIcon type="receivable" />} title="Customer Receivables" value={money(financialDashboard.customerRemaining)} />
+            <Card icon={<MetricIcon type="collected" />} title="Collected From Clients" value={money(financialDashboard.customerCollected)} />
+            <Card icon={<MetricIcon type="payable" />} title="Supplier Payables" value={money(financialDashboard.supplierPayables)} />
+            <Card icon={<MetricIcon type="paid" />} title="Paid To Suppliers" value={money(financialDashboard.supplierPaid)} />
+            <Card icon={<MetricIcon type="cash" />} title="Cash Position" value={money(cashPosition)} />
           </section>
           <section className="panel">
             <div className="panelHead">
@@ -141,10 +227,10 @@ export function DashboardScreen({ totals, taskDashboard, canSeeFinance, notifica
               </FormField>
             </div>
             <section className="stats compactStats">
-              <Card icon="$" title="Sales Invoices" value={money(monthlyFinancialDashboard.sales)} />
-              <Card icon="$" title="Purchase Invoices" value={money(monthlyFinancialDashboard.purchases)} />
-              <Card icon="$" title="Expected Profit" value={money(monthlyFinancialDashboard.expectedProfit)} />
-              <Card icon="$" title="Cash Position" value={money(monthlyFinancialDashboard.cashIn - monthlyFinancialDashboard.cashOut)} />
+              <Card icon={<MetricIcon type="invoice" />} title="Sales Invoices" value={money(monthlyFinancialDashboard.sales)} />
+              <Card icon={<MetricIcon type="payable" />} title="Purchase Invoices" value={money(monthlyFinancialDashboard.purchases)} />
+              <Card icon={<MetricIcon type="profit" />} title="Expected Profit" value={money(monthlyFinancialDashboard.expectedProfit)} />
+              <Card icon={<MetricIcon type="cash" />} title="Cash Position" value={money(monthlyFinancialDashboard.cashIn - monthlyFinancialDashboard.cashOut)} />
             </section>
             <div className="detailGrid">
               <p><b>Shipments:</b> {monthlyFinancialDashboard.shipments}</p>
