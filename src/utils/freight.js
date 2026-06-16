@@ -30,6 +30,54 @@ export function getShipmentDocuments(shipment) {
   return Array.isArray(shipment.documents) ? shipment.documents : [];
 }
 
+export function getTimelineEvents(shipment) {
+  const savedEvents = Array.isArray(shipment.timeline) ? shipment.timeline : [];
+  const baselineEvents = [
+    {
+      id: `BASE-CREATED-${shipment?.id || "shipment"}`,
+      type: "Shipment",
+      title: "Shipment created",
+      date: shipment?.entryDate || shipment?.createdAt || "",
+      note: "File opened in Freight OS.",
+      system: true,
+    },
+    {
+      id: `BASE-CUTOFF-${shipment?.id || "shipment"}`,
+      type: "Schedule",
+      title: "Cut-Off",
+      date: shipment?.cutOff || "",
+      note: "Document and cargo deadline.",
+      system: true,
+    },
+    {
+      id: `BASE-ETD-${shipment?.id || "shipment"}`,
+      type: "Schedule",
+      title: "ETD",
+      date: shipment?.etd || "",
+      note: "Expected departure.",
+      system: true,
+    },
+    {
+      id: `BASE-ETA-${shipment?.id || "shipment"}`,
+      type: "Schedule",
+      title: "ETA",
+      date: shipment?.eta || "",
+      note: "Expected arrival.",
+      system: true,
+    },
+    {
+      id: `BASE-STATUS-${shipment?.id || "shipment"}`,
+      type: "Status",
+      title: `Current status: ${shipment?.status || "Not set"}`,
+      date: shipment?.updatedAt || shipment?.createdAt || shipment?.entryDate || "",
+      note: `Payment status: ${shipment?.paymentStatus || "Not set"}`,
+      system: true,
+    },
+  ].filter((event) => event.date || event.title.startsWith("Current status"));
+
+  return [...savedEvents, ...baselineEvents].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+}
+
 export function getNextFinancialInvoiceNumber(shipment, invoiceType) {
   const code = invoiceType === "Sale" ? "SI" : "PI";
   const savedSequence = Number(shipment?.financialInvoiceSequences?.[invoiceType.toLowerCase()] || 0);
@@ -514,6 +562,7 @@ export function normalizeShipment(shipment) {
     financialInvoices: getFinancialInvoices(shipment),
     financialInvoiceSequences: shipment.financialInvoiceSequences || { sale: 0, purchase: 0 },
     documents: getShipmentDocuments(shipment),
+    timeline: Array.isArray(shipment.timeline) ? shipment.timeline : [],
     tasks: getTasks(shipment),
     emailReminderSent: shipment.emailReminderSent || {},
     tracking: shipment.tracking || {},

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { CargoSelect, ContainerSelect, CustomerSelect, FormField, PaymentSelect, PaymentSummaryBox, PortSelect, StatusSelect, SupplierSelect } from "../components/freightComponents";
 import { generateInvoicePdf } from "../services/pdf";
-import { calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanBuy, calcOceanSell, calcTotalCostUsd, calcTransportTry, getExpenses, getPayments, getShipmentBillableQty, getShipmentDocuments, getShipmentLoadDescription, getShipmentUnitLabel, getTaskStatus, getTasks, getTransports, isAirShipment, isFclShipment, money } from "../utils/freight";
+import { calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanBuy, calcOceanSell, calcTotalCostUsd, calcTransportTry, getExpenses, getPayments, getShipmentBillableQty, getShipmentDocuments, getShipmentLoadDescription, getShipmentUnitLabel, getTaskStatus, getTasks, getTimelineEvents, getTransports, isAirShipment, isFclShipment, money } from "../utils/freight";
 
 const documentTypes = ["Bill of Lading", "Commercial Invoice", "Packing List", "Freight Invoice", "Customs", "Other"];
 
@@ -76,14 +76,15 @@ function ShipmentEditForm({ editForm, editIsFcl, editIsAir, editUnitLabel, saveE
   );
 }
 
-function TimelineItem({ label, date, note }) {
+function TimelineItem({ event }) {
   return (
     <div className="timelineItem">
       <span className="timelineDot" />
       <div>
-        <b>{label}</b>
-        <p>{date || "Not set"}</p>
-        {note && <small>{note}</small>}
+        <b>{event.title}</b>
+        <p>{event.date ? new Date(event.date).toLocaleString() : "Not set"}</p>
+        <small>{event.type || "Event"}{event.user ? ` | ${event.user}` : ""}</small>
+        {event.note && <small>{event.note}</small>}
       </div>
     </div>
   );
@@ -100,6 +101,7 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
   const expenses = getExpenses(selectedShipment);
   const payments = getPayments(selectedShipment);
   const documents = getShipmentDocuments(selectedShipment);
+  const timelineEvents = getTimelineEvents(selectedShipment);
 
   return (
     <section className="panel shipmentDetailsPanel">
@@ -295,11 +297,7 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
 
           {detailTab === "timeline" && (
             <div className="timeline">
-              <TimelineItem label="Shipment Created" date={selectedShipment.entryDate || selectedShipment.createdAt} note="File opened in Freight OS." />
-              <TimelineItem label="Cut-Off" date={selectedShipment.cutOff} note="Document and cargo deadline." />
-              <TimelineItem label="ETD" date={selectedShipment.etd} note="Expected departure." />
-              <TimelineItem label="ETA" date={selectedShipment.eta} note="Expected arrival." />
-              <TimelineItem label="Current Status" date={selectedShipment.status} note={`Payment status: ${selectedShipment.paymentStatus || "Not set"}`} />
+              {timelineEvents.map((event) => <TimelineItem key={event.id} event={event} />)}
             </div>
           )}
         </>

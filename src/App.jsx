@@ -1236,6 +1236,24 @@ export default function App() {
     setIsEditing(true);
   }
 
+  function createTimelineEvent(type, title, note = "") {
+    return {
+      id: `TL-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      type,
+      title,
+      note,
+      date: new Date().toISOString(),
+      user: user?.email || "unknown",
+    };
+  }
+
+  function withTimeline(shipment, event) {
+    return {
+      ...shipment,
+      timeline: event ? [event, ...(shipment.timeline || [])] : (shipment.timeline || []),
+    };
+  }
+
   function saveShipmentDocument(shipmentId, file, documentType = "Other") {
     if (!file) return;
     if (file.size > 4 * 1024 * 1024) {
@@ -1258,7 +1276,10 @@ export default function App() {
       let updatedSelected = null;
       setShipments((previous) => previous.map((shipment) => {
         if (shipment.id !== shipmentId) return shipment;
-        const updated = normalizeShipment({ ...shipment, documents: [newDocument, ...getShipmentDocuments(shipment)] });
+        const updated = normalizeShipment(withTimeline(
+          { ...shipment, documents: [newDocument, ...getShipmentDocuments(shipment)] },
+          createTimelineEvent("Document", "Document uploaded", `${documentType}: ${file.name}`)
+        ));
         updatedSelected = updated;
         return updated;
       }));
@@ -1272,10 +1293,11 @@ export default function App() {
     let updatedSelected = null;
     setShipments((previous) => previous.map((shipment) => {
       if (shipment.id !== shipmentId) return shipment;
-      const updated = normalizeShipment({
+      const removedDocument = getShipmentDocuments(shipment).find((document) => document.id === documentId);
+      const updated = normalizeShipment(withTimeline({
         ...shipment,
         documents: getShipmentDocuments(shipment).filter((document) => document.id !== documentId),
-      });
+      }, createTimelineEvent("Document", "Document deleted", removedDocument?.name || "Shipment document")));
       updatedSelected = updated;
       return updated;
     }));
@@ -1288,7 +1310,7 @@ function saveEditShipment(e) {
   const draftShipment = { ...editForm };
   const billableQty = getShipmentBillableQty(draftShipment);
 
-  const updatedShipment = normalizeShipment({
+  const updatedShipment = normalizeShipment(withTimeline({
     ...selectedShipment,
     ...editForm,
     id: selectedShipment.id, // Never change shipment ID during editing.
@@ -1302,7 +1324,8 @@ function saveEditShipment(e) {
     sellUsd: Number(editForm.sellUsd || 0),
     bookingNo: editForm.bookingNo || "Not set",
     vessel: isAirShipment(draftShipment) ? "Not set" : editForm.vessel || "Not set",
-  });
+    updatedAt: new Date().toISOString(),
+  }, createTimelineEvent("Shipment", "Shipment updated", `Status: ${selectedShipment.status || "Not set"} -> ${editForm.status || "Not set"}`)));
 
   setShipments((prev) =>
     dedupeShipments(prev.map((s) => (s.id === selectedShipment.id ? updatedShipment : s)))
@@ -1354,6 +1377,7 @@ function addShipmentFromForm(e) {
       expenses: [],
       payments: [],
       tasks: [],
+      timeline: [createTimelineEvent("Shipment", "Shipment created", `${bookingForm.customer} | ${bookingForm.pol} -> ${bookingForm.pod}`)],
     });
 
     setShipments((prev) => dedupeShipments([newShipment, ...prev]));
@@ -1380,7 +1404,9 @@ function addShipmentFromForm(e) {
 
     setShipments((prev) =>
       prev.map((s) =>
-        s.id === transportForm.shipmentId ? normalizeShipment({ ...s, transports: [...getTransports(s), newTransport] }) : s
+        s.id === transportForm.shipmentId
+          ? normalizeShipment(withTimeline({ ...s, transports: [...getTransports(s), newTransport] }, createTimelineEvent("Transport", "Local transport added", `${newTransport.company} | ${newTransport.from || "Origin"} -> ${newTransport.to || "Destination"}`)))
+          : s
       )
     );
 
@@ -1407,7 +1433,9 @@ function addShipmentFromForm(e) {
 
     setShipments((prev) =>
       prev.map((s) =>
-        s.id === expenseForm.shipmentId ? normalizeShipment({ ...s, expenses: [...getExpenses(s), newExpense] }) : s
+        s.id === expenseForm.shipmentId
+          ? normalizeShipment(withTimeline({ ...s, expenses: [...getExpenses(s), newExpense] }, createTimelineEvent("Expense", "Expense added", `${newExpense.type} | ${money(newExpense.amountUsd)}`)))
+          : s
       )
     );
 
@@ -1452,7 +1480,10 @@ function addShipmentFromForm(e) {
         const payments = editingPayment
           ? getPayments(s).map((payment) => (payment.id === editingPayment.paymentId ? newPayment : payment))
           : [newPayment, ...getPayments(s)];
-        const updated = normalizeShipment({ ...s, payments });
+        const updated = normalizeShipment(withTimeline(
+          { ...s, payments },
+          createTimelineEvent("Payment", editingPayment ? "Payment updated" : "Payment recorded", `${newPayment.purchaseType} | ${money(newPayment.amount, newPayment.currency)}`)
+        ));
         if (selectedShipment?.id === s.id) updatedSelected = updated;
         return updated;
       })
@@ -1491,7 +1522,10 @@ function addShipmentFromForm(e) {
     setShipments((prev) =>
       prev.map((s) => {
         if (s.id !== receivableForm.shipmentId) return s;
-        const updated = normalizeShipment({ ...s, payments: [newPayment, ...getPayments(s)] });
+        const updated = normalizeShipment(withTimeline(
+          { ...s, payments: [newPayment, ...getPayments(s)] },
+          createTimelineEvent("Payment", "Customer collection recorded", `${money(newPayment.amount, newPayment.currency)} from ${newPayment.company}`)
+        ));
         if (selectedShipment?.id === s.id) updatedSelected = updated;
         return updated;
       })
@@ -1540,7 +1574,10 @@ function addShipmentFromForm(e) {
           ...(shipment.financialInvoiceSequences || {}),
           [invoiceForm.invoiceType.toLowerCase()]: Number(invoiceNo.match(/(\d+)$/)?.[1] || 0),
         };
-      return normalizeShipment({ ...shipment, financialInvoices: invoices, financialInvoiceSequences: sequences, payments });
+      return normalizeShipment(withTimeline(
+        { ...shipment, financialInvoices: invoices, financialInvoiceSequences: sequences, payments },
+        createTimelineEvent("Invoice", editingInvoiceId ? "Invoice updated" : "Invoice added", `${savedInvoice.invoiceNo} | ${savedInvoice.invoiceType} | ${money(savedInvoice.amount, savedInvoice.currency)}`)
+      ));
     }));
   }
 
@@ -1556,7 +1593,10 @@ function addShipmentFromForm(e) {
       const payments = getPayments(shipment).map((payment) => (
         payment.invoiceId === invoiceId ? { ...payment, invoiceId: "" } : payment
       ));
-      return normalizeShipment({ ...shipment, financialInvoices: invoices, payments });
+      return normalizeShipment(withTimeline(
+        { ...shipment, financialInvoices: invoices, payments },
+        createTimelineEvent("Invoice", "Invoice deleted", invoiceId)
+      ));
     }));
   }
 
@@ -1583,7 +1623,10 @@ function addShipmentFromForm(e) {
 
     setShipments((previous) => previous.map((shipment) => (
       shipment.id === shipmentId
-        ? normalizeShipment({ ...shipment, payments: [newPayment, ...getPayments(shipment)] })
+        ? normalizeShipment(withTimeline(
+          { ...shipment, payments: [newPayment, ...getPayments(shipment)] },
+          createTimelineEvent("Payment", "Invoice payment recorded", `${invoice.invoiceNo} | ${money(newPayment.amount, newPayment.currency)}`)
+        ))
         : shipment
     )));
   }
@@ -1595,12 +1638,12 @@ function addShipmentFromForm(e) {
     }
     setShipments((previous) => previous.map((shipment) => (
       shipment.id === shipmentId
-        ? normalizeShipment({
+        ? normalizeShipment(withTimeline({
           ...shipment,
           payments: getPayments(shipment).map((payment) => (
             payment.id === paymentId ? { ...payment, invoiceId, updatedAt: new Date().toISOString(), updatedBy: user?.email || "unknown" } : payment
           )),
-        })
+        }, createTimelineEvent("Payment", "Payment allocated to invoice", invoiceId || "Unallocated")))
         : shipment
     )));
   }
@@ -1632,7 +1675,10 @@ function addShipmentFromForm(e) {
     setShipments((prev) =>
       prev.map((s) => {
         if (s.id !== taskForm.shipmentId) return s;
-        const updated = normalizeShipment({ ...s, tasks: [newTask, ...getTasks(s)] });
+        const updated = normalizeShipment(withTimeline(
+          { ...s, tasks: [newTask, ...getTasks(s)] },
+          createTimelineEvent("Task", "Task added", `${newTask.title} | Due ${newTask.dueDate}`)
+        ));
         if (selectedShipment?.id === s.id) updatedSelected = updated;
         return updated;
       })
@@ -1702,7 +1748,10 @@ function addShipmentFromForm(e) {
     setShipments((prev) =>
       prev.map((s) => {
         if (s.id !== shipment.id) return s;
-        const updated = normalizeShipment({ ...s, tasks: [...autoTasks, ...getTasks(s)] });
+        const updated = normalizeShipment(withTimeline(
+          { ...s, tasks: [...autoTasks, ...getTasks(s)] },
+          createTimelineEvent("Task", "Auto reminder tasks created", `${autoTasks.length} reminder task(s) added`)
+        ));
         if (selectedShipment?.id === s.id) updatedSelected = updated;
         return updated;
       })
@@ -1719,14 +1768,16 @@ function addShipmentFromForm(e) {
     setShipments((prev) =>
       prev.map((s) => {
         if (s.id !== shipmentId) return s;
-        const updated = normalizeShipment({
+        const previousTask = getTasks(s).find((task) => task.id === taskId);
+        const nextStatus = previousTask?.status === "Done" ? "Pending" : "Done";
+        const updated = normalizeShipment(withTimeline({
           ...s,
           tasks: getTasks(s).map((task) =>
             task.id === taskId
               ? { ...task, status: task.status === "Done" ? "Pending" : "Done", completedAt: task.status === "Done" ? "" : new Date().toISOString() }
               : task
           ),
-        });
+        }, createTimelineEvent("Task", `Task marked ${nextStatus}`, previousTask?.title || taskId)));
         if (selectedShipment?.id === s.id) updatedSelected = updated;
         return updated;
       })
@@ -1744,7 +1795,11 @@ function addShipmentFromForm(e) {
     setShipments((prev) =>
       prev.map((s) => {
         if (s.id !== shipmentId) return s;
-        const updated = normalizeShipment({ ...s, tasks: getTasks(s).filter((task) => task.id !== taskId) });
+        const deletedTask = getTasks(s).find((task) => task.id === taskId);
+        const updated = normalizeShipment(withTimeline(
+          { ...s, tasks: getTasks(s).filter((task) => task.id !== taskId) },
+          createTimelineEvent("Task", "Task deleted", deletedTask?.title || taskId)
+        ));
         if (selectedShipment?.id === s.id) updatedSelected = updated;
         return updated;
       })
@@ -1763,7 +1818,11 @@ function addShipmentFromForm(e) {
     setShipments((prev) =>
       prev.map((s) => {
         if (s.id !== shipmentId) return s;
-        const updated = normalizeShipment({ ...s, payments: getPayments(s).filter((payment) => payment.id !== paymentId) });
+        const deletedPayment = getPayments(s).find((payment) => payment.id === paymentId);
+        const updated = normalizeShipment(withTimeline(
+          { ...s, payments: getPayments(s).filter((payment) => payment.id !== paymentId) },
+          createTimelineEvent("Payment", "Payment deleted", deletedPayment ? `${deletedPayment.purchaseType} | ${money(deletedPayment.amount, deletedPayment.currency)}` : paymentId)
+        ));
         if (selectedShipment?.id === s.id) updatedSelected = updated;
         return updated;
       })
@@ -1785,7 +1844,11 @@ function addShipmentFromForm(e) {
     setShipments((prev) =>
       prev.map((s) => {
         if (s.id !== shipmentId) return s;
-        return normalizeShipment({ ...s, transports: getTransports(s).filter((_, i) => i !== index) });
+        const deletedTransport = getTransports(s)[index];
+        return normalizeShipment(withTimeline(
+          { ...s, transports: getTransports(s).filter((_, i) => i !== index) },
+          createTimelineEvent("Transport", "Local transport deleted", deletedTransport?.company || "Transport record")
+        ));
       })
     );
   }
@@ -1799,7 +1862,11 @@ function addShipmentFromForm(e) {
     setShipments((prev) =>
       prev.map((s) => {
         if (s.id !== shipmentId) return s;
-        return normalizeShipment({ ...s, expenses: getExpenses(s).filter((_, i) => i !== index) });
+        const deletedExpense = getExpenses(s)[index];
+        return normalizeShipment(withTimeline(
+          { ...s, expenses: getExpenses(s).filter((_, i) => i !== index) },
+          createTimelineEvent("Expense", "Expense deleted", deletedExpense ? `${deletedExpense.type} | ${money(deletedExpense.amountUsd)}` : "Expense record")
+        ));
       })
     );
   }
