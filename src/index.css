@@ -217,6 +217,44 @@ button {
   gap: 22px;
 }
 
+.dashboardSubtabs {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.74);
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  border-radius: 16px;
+  display: flex;
+  gap: 6px;
+  margin: 0 0 22px;
+  padding: 6px;
+  width: fit-content;
+}
+
+.dashboardSubtabs button {
+  align-items: center;
+  background: transparent;
+  border-radius: 12px;
+  color: #93c5fd;
+  display: inline-flex;
+  gap: 8px;
+  padding: 9px 14px;
+}
+
+.dashboardSubtabs button.active {
+  background: rgba(56, 189, 248, 0.16);
+  color: #f8fafc;
+}
+
+.dashboardSubtabs span {
+  background: rgba(56, 189, 248, 0.18);
+  border-radius: 999px;
+  color: #7dd3fc;
+  font-size: 11px;
+  font-weight: 900;
+  min-width: 22px;
+  padding: 3px 7px;
+  text-align: center;
+}
+
 .stackList {
   display: grid;
   gap: 14px;
@@ -808,6 +846,15 @@ tr:hover {
 
   .actionOpen {
     justify-self: start;
+  }
+
+  .dashboardSubtabs {
+    overflow-x: auto;
+    width: 100%;
+  }
+
+  .dashboardSubtabs button {
+    white-space: nowrap;
   }
 }
 
