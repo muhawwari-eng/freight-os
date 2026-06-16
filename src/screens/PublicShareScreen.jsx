@@ -1,4 +1,7 @@
 export function PublicShareScreen({ share }) {
+  const showPaymentStatus = Boolean(share.paymentStatus);
+  const showCustomerAmount = Number(share.customerAmount || 0) > 0;
+
   return (
     <div className="publicShareShell">
       <section className="publicShareHero">
@@ -23,7 +26,8 @@ export function PublicShareScreen({ share }) {
             <p><b>Load:</b> {share.loadDescription || "Not set"}</p>
             <p><b>Cut-Off:</b> {share.cutOff || "Not set"}</p>
             <p><b>ETD / ETA:</b> {share.etd || "Not set"} / {share.eta || "Not set"}</p>
-            <p><b>Payment:</b> {share.paymentStatus || "Not set"}</p>
+            {showPaymentStatus && <p><b>Payment:</b> {share.paymentStatus}</p>}
+            {showCustomerAmount && <p><b>Invoice Amount:</b> {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(share.customerAmount || 0))}</p>}
             <p><b>Updated:</b> {share.sharedAt ? new Date(share.sharedAt).toLocaleString() : "Not set"}</p>
           </div>
         </div>

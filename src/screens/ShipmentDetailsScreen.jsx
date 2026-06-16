@@ -22,12 +22,13 @@ function downloadDocument(document) {
 }
 
 function DetailSubtabs({ activeTab, setActiveTab, canSeeFinance }) {
-  const tabs = ["overview", canSeeFinance && "finance", "tasks", "documents", "timeline"].filter(Boolean);
+  const tabs = ["overview", canSeeFinance && "finance", "tasks", "documents", "share", "timeline"].filter(Boolean);
   const labels = {
     overview: "Overview",
     finance: "Finance",
     tasks: "Tasks",
     documents: "Documents",
+    share: "Share",
     timeline: "Timeline",
   };
 
@@ -93,6 +94,11 @@ function TimelineItem({ event }) {
 export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFinance, canEditOperation, startEditShipment, setTab, isEditing, saveEditShipment, editForm, customers, updateEdit, canEditCore, suppliers, ports, setIsEditing, createAutoTasksForShipment, toggleTaskStatus, role, deleteTask, saveShipmentDocument, deleteShipmentDocument, shareShipmentWithCustomer }) {
   const [detailTab, setDetailTab] = useState("overview");
   const [documentType, setDocumentType] = useState("Bill of Lading");
+  const [shareOptions, setShareOptions] = useState({
+    includePaymentStatus: true,
+    includeDocuments: true,
+    includeInvoiceAmount: false,
+  });
   const editIsFcl = isFclShipment(editForm);
   const editIsAir = isAirShipment(editForm);
   const editUnitLabel = getShipmentUnitLabel(editForm);
@@ -102,6 +108,9 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
   const payments = getPayments(selectedShipment);
   const documents = getShipmentDocuments(selectedShipment);
   const timelineEvents = getTimelineEvents(selectedShipment);
+  function updateShareOption(field, checked) {
+    setShareOptions((previous) => ({ ...previous, [field]: checked }));
+  }
 
   return (
     <section className="panel shipmentDetailsPanel">
@@ -111,7 +120,7 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
           <p>{selectedShipment.customer || "No customer"} | {selectedShipment.pol || "POL"} - {selectedShipment.pod || "POD"}</p>
         </div>
         <div className="actions">
-          {canEditOperation && <button className="ghostBtn" onClick={() => shareShipmentWithCustomer(selectedShipment)}>Share with Customer</button>}
+          {canEditOperation && <button className="ghostBtn" onClick={() => setDetailTab("share")}>Share with Customer</button>}
           {canSeeFinance && <button className="saveBtn" onClick={() => generateInvoicePdf(selectedShipment, activeFxRate)}>Generate Invoice</button>}
           {canEditOperation && <button className="saveBtn" onClick={startEditShipment}>Edit Shipment</button>}
           <button className="ghostBtn" onClick={() => setTab("shipments")}>Back</button>
@@ -294,6 +303,48 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
                 </div>
               )}
             </>
+          )}
+
+          {detailTab === "share" && (
+            <div className="shareOptionsPanel">
+              <div className="panelHead">
+                <div>
+                  <h3>Customer Share Permissions</h3>
+                  <p>Choose exactly what this customer link can show. Internal buy costs, supplier costs, and profit are never shared.</p>
+                </div>
+              </div>
+              <div className="shareOptionGrid">
+                <label className="shareOption">
+                  <input type="checkbox" checked={shareOptions.includePaymentStatus} onChange={(event) => updateShareOption("includePaymentStatus", event.target.checked)} />
+                  <span>
+                    <b>Show payment status</b>
+                    <small>Displays paid/unpaid status only, not internal payment records.</small>
+                  </span>
+                </label>
+                <label className="shareOption">
+                  <input type="checkbox" checked={shareOptions.includeDocuments} onChange={(event) => updateShareOption("includeDocuments", event.target.checked)} />
+                  <span>
+                    <b>Show document list</b>
+                    <small>Shows document names and types only. File downloads are not exposed.</small>
+                  </span>
+                </label>
+                <label className="shareOption">
+                  <input type="checkbox" checked={shareOptions.includeInvoiceAmount} onChange={(event) => updateShareOption("includeInvoiceAmount", event.target.checked)} />
+                  <span>
+                    <b>Show customer invoice amount</b>
+                    <small>Shows sale amount only. Purchase, expenses, and profit stay hidden.</small>
+                  </span>
+                </label>
+              </div>
+              <div className="actions mt">
+                <button className="saveBtn" onClick={() => shareShipmentWithCustomer(selectedShipment, shareOptions)}>Generate / Copy Link</button>
+                <button className="ghostBtn" onClick={() => setShareOptions({ includePaymentStatus: true, includeDocuments: true, includeInvoiceAmount: false })}>Reset Defaults</button>
+              </div>
+              <div className="emptyState mt">
+                <b>Link behavior</b>
+                <p>Each generated link is a snapshot with the options above. Generate a new link after changing permissions.</p>
+              </div>
+            </div>
           )}
 
           {detailTab === "timeline" && (

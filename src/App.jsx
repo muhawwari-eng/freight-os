@@ -1236,10 +1236,17 @@ export default function App() {
     setTab("details");
   }
 
-  async function shareShipmentWithCustomer(shipment) {
+  async function shareShipmentWithCustomer(shipment, options = {}) {
     const normalized = normalizeShipment(shipment);
+    const shareOptions = {
+      includePaymentStatus: true,
+      includeDocuments: true,
+      includeInvoiceAmount: false,
+      ...options,
+    };
     const payload = {
       version: 1,
+      permissions: shareOptions,
       id: normalized.id,
       customer: normalized.customer,
       pol: normalized.pol,
@@ -1248,17 +1255,20 @@ export default function App() {
       cargoType: normalized.cargoType,
       loadDescription: getShipmentLoadDescription(normalized),
       status: normalized.status,
-      paymentStatus: normalized.paymentStatus,
+      paymentStatus: shareOptions.includePaymentStatus ? normalized.paymentStatus : "",
+      customerAmount: shareOptions.includeInvoiceAmount ? calcOceanSell(normalized) : null,
       cutOff: normalized.cutOff,
       etd: normalized.etd,
       eta: normalized.eta,
       sharedAt: new Date().toISOString(),
-      documents: getShipmentDocuments(normalized).map((document) => ({
-        id: document.id,
-        name: document.name,
-        type: document.type,
-        uploadedAt: document.uploadedAt,
-      })),
+      documents: shareOptions.includeDocuments
+        ? getShipmentDocuments(normalized).map((document) => ({
+          id: document.id,
+          name: document.name,
+          type: document.type,
+          uploadedAt: document.uploadedAt,
+        }))
+        : [],
     };
     const url = `${window.location.origin}${window.location.pathname}?share=${encodeSharePayload(payload)}`;
 

@@ -433,6 +433,43 @@ button {
   max-width: 1120px;
 }
 
+.shareOptionsPanel {
+  margin-top: 18px;
+}
+
+.shareOptionGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 16px;
+}
+
+.shareOption {
+  align-items: flex-start;
+  background: rgba(14, 39, 65, 0.66);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  border-radius: 16px;
+  display: flex;
+  gap: 12px;
+  padding: 15px;
+}
+
+.shareOption input {
+  margin-top: 3px;
+  width: auto;
+}
+
+.shareOption b {
+  color: #f8fafc;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.shareOption small {
+  color: #93c5fd;
+  line-height: 1.35;
+}
+
 .stackList {
   display: grid;
   gap: 14px;
@@ -1050,6 +1087,10 @@ tr:hover {
 
   .publicShareHero {
     flex-direction: column;
+  }
+
+  .shareOptionGrid {
+    grid-template-columns: 1fr;
   }
 }
 
