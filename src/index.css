@@ -378,6 +378,61 @@ button {
   display: none;
 }
 
+.publicShareShell {
+  background:
+    radial-gradient(circle at top left, rgba(56, 189, 248, 0.16), transparent 34%),
+    #071827;
+  color: #e5f3ff;
+  min-height: 100vh;
+  padding: 34px;
+}
+
+.publicShareHero {
+  align-items: stretch;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(56, 189, 248, 0.24);
+  border-radius: 24px;
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 0 auto 24px;
+  max-width: 1120px;
+  padding: 28px;
+}
+
+.publicShareHero p,
+.publicShareHero small {
+  color: #93c5fd;
+  font-weight: 800;
+  margin: 0 0 8px;
+}
+
+.publicShareHero h1 {
+  font-size: 34px;
+  margin: 0 0 14px;
+}
+
+.publicShareRoute {
+  background: rgba(14, 39, 65, 0.72);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 18px;
+  min-width: 280px;
+  padding: 18px;
+}
+
+.publicShareRoute b {
+  display: block;
+  font-size: 22px;
+}
+
+.publicShareGrid {
+  display: grid;
+  gap: 22px;
+  grid-template-columns: 1.4fr 0.9fr;
+  margin: 0 auto;
+  max-width: 1120px;
+}
+
 .stackList {
   display: grid;
   gap: 14px;
@@ -982,6 +1037,19 @@ tr:hover {
 
   .detailHero {
     grid-template-columns: 1fr;
+  }
+
+  .publicShareShell {
+    padding: 18px;
+  }
+
+  .publicShareHero,
+  .publicShareGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .publicShareHero {
+    flex-direction: column;
   }
 }
 

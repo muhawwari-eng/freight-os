@@ -26,6 +26,20 @@ import { PortsScreen } from "./screens/PortsScreen";
 import { ReportsScreen } from "./screens/ReportsScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import { ApiScreen } from "./screens/ApiScreen";
+import { PublicShareScreen } from "./screens/PublicShareScreen";
+
+function encodeSharePayload(payload) {
+  return btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+}
+
+function decodeSharePayload(value) {
+  try {
+    return JSON.parse(decodeURIComponent(escape(atob(value))));
+  } catch {
+    return null;
+  }
+}
+
 export default function App() {
   const [shipments, setShipments] = useState([]);
 
@@ -98,6 +112,10 @@ export default function App() {
   const canManagePayments = role === "admin";
   const canEditOperation = canEditCore || role === "operation";
   const activeFxRate = Number(fxSettings.mode === "auto" ? fxSettings.autoRate : fxSettings.manualRate) || 1;
+  const publicShare = useMemo(() => {
+    const shareValue = new URLSearchParams(window.location.search).get("share");
+    return shareValue ? decodeSharePayload(shareValue) : null;
+  }, []);
 
   useEffect(() => {
     if (user?.id) localStorage.setItem(`freight_shipments_${user.id}`, JSON.stringify(shipments));
@@ -1218,6 +1236,40 @@ export default function App() {
     setTab("details");
   }
 
+  async function shareShipmentWithCustomer(shipment) {
+    const normalized = normalizeShipment(shipment);
+    const payload = {
+      version: 1,
+      id: normalized.id,
+      customer: normalized.customer,
+      pol: normalized.pol,
+      pod: normalized.pod,
+      bookingNo: normalized.bookingNo,
+      cargoType: normalized.cargoType,
+      loadDescription: getShipmentLoadDescription(normalized),
+      status: normalized.status,
+      paymentStatus: normalized.paymentStatus,
+      cutOff: normalized.cutOff,
+      etd: normalized.etd,
+      eta: normalized.eta,
+      sharedAt: new Date().toISOString(),
+      documents: getShipmentDocuments(normalized).map((document) => ({
+        id: document.id,
+        name: document.name,
+        type: document.type,
+        uploadedAt: document.uploadedAt,
+      })),
+    };
+    const url = `${window.location.origin}${window.location.pathname}?share=${encodeSharePayload(payload)}`;
+
+    try {
+      await navigator.clipboard.writeText(url);
+      alert("Customer share link copied.");
+    } catch {
+      window.prompt("Copy customer share link:", url);
+    }
+  }
+
   function startEditShipment() {
     if (!selectedShipment) return;
     setEditForm({
@@ -2021,6 +2073,10 @@ function importLocalBackup(event) {
     }
   }
 
+  if (publicShare) {
+    return <PublicShareScreen share={publicShare} />;
+  }
+
   if (!user) {
     return <Login onLogin={setUser} />;
   }
@@ -2083,7 +2139,7 @@ function importLocalBackup(event) {
 
         {tab === "dashboard" && <DashboardScreen totals={totals} taskDashboard={taskDashboard} canSeeFinance={canSeeFinance} notifications={notifications} clearNotifications={clearNotifications} markNotificationRead={markNotificationRead} actionCenter={actionCenter} financialDashboard={financialDashboard} cashPosition={cashPosition} monthlyFinancialDashboard={monthlyFinancialDashboard} financialMonth={financialMonth} setFinancialMonth={setFinancialMonth} dashboardCharts={dashboardCharts} shipments={shipments} activeFxRate={activeFxRate} openShipmentDetails={openShipmentDetails} />}
 
-        {tab === "details" && selectedShipment && <ShipmentDetailsScreen selectedShipment={selectedShipment} activeFxRate={activeFxRate} canSeeFinance={canSeeFinance} canEditOperation={canEditOperation} startEditShipment={startEditShipment} setTab={setTab} isEditing={isEditing} saveEditShipment={saveEditShipment} editForm={editForm} customers={customers} updateEdit={updateEdit} canEditCore={canEditCore} suppliers={suppliers} ports={ports} setIsEditing={setIsEditing} createAutoTasksForShipment={createAutoTasksForShipment} toggleTaskStatus={toggleTaskStatus} role={role} deleteTask={deleteTask} saveShipmentDocument={saveShipmentDocument} deleteShipmentDocument={deleteShipmentDocument} />}
+        {tab === "details" && selectedShipment && <ShipmentDetailsScreen selectedShipment={selectedShipment} activeFxRate={activeFxRate} canSeeFinance={canSeeFinance} canEditOperation={canEditOperation} startEditShipment={startEditShipment} setTab={setTab} isEditing={isEditing} saveEditShipment={saveEditShipment} editForm={editForm} customers={customers} updateEdit={updateEdit} canEditCore={canEditCore} suppliers={suppliers} ports={ports} setIsEditing={setIsEditing} createAutoTasksForShipment={createAutoTasksForShipment} toggleTaskStatus={toggleTaskStatus} role={role} deleteTask={deleteTask} saveShipmentDocument={saveShipmentDocument} deleteShipmentDocument={deleteShipmentDocument} shareShipmentWithCustomer={shareShipmentWithCustomer} />}
 
         {tab === "shipments" && <ShipmentsScreen resetShipmentFilters={resetShipmentFilters} query={query} setQuery={setQuery} shipmentFilters={shipmentFilters} customers={customers} updateShipmentFilter={updateShipmentFilter} suppliers={suppliers} setLineFilter={setLineFilter} ports={ports} canSeeFinance={canSeeFinance} role={role} filtered={filtered} openShipmentDetails={openShipmentDetails} activeFxRate={activeFxRate} deleteShipment={deleteShipment} />}
 

@@ -90,7 +90,7 @@ function TimelineItem({ event }) {
   );
 }
 
-export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFinance, canEditOperation, startEditShipment, setTab, isEditing, saveEditShipment, editForm, customers, updateEdit, canEditCore, suppliers, ports, setIsEditing, createAutoTasksForShipment, toggleTaskStatus, role, deleteTask, saveShipmentDocument, deleteShipmentDocument }) {
+export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFinance, canEditOperation, startEditShipment, setTab, isEditing, saveEditShipment, editForm, customers, updateEdit, canEditCore, suppliers, ports, setIsEditing, createAutoTasksForShipment, toggleTaskStatus, role, deleteTask, saveShipmentDocument, deleteShipmentDocument, shareShipmentWithCustomer }) {
   const [detailTab, setDetailTab] = useState("overview");
   const [documentType, setDocumentType] = useState("Bill of Lading");
   const editIsFcl = isFclShipment(editForm);
@@ -111,6 +111,7 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
           <p>{selectedShipment.customer || "No customer"} | {selectedShipment.pol || "POL"} - {selectedShipment.pod || "POD"}</p>
         </div>
         <div className="actions">
+          {canEditOperation && <button className="ghostBtn" onClick={() => shareShipmentWithCustomer(selectedShipment)}>Share with Customer</button>}
           {canSeeFinance && <button className="saveBtn" onClick={() => generateInvoicePdf(selectedShipment, activeFxRate)}>Generate Invoice</button>}
           {canEditOperation && <button className="saveBtn" onClick={startEditShipment}>Edit Shipment</button>}
           <button className="ghostBtn" onClick={() => setTab("shipments")}>Back</button>
