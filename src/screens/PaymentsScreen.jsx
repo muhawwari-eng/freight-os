@@ -13,8 +13,8 @@ export function PaymentsScreen({ canManagePayments, addPaymentToShipment, paymen
                     <FormField label="Payment / Purchase Type"><select value={paymentForm.purchaseType} onChange={(e) => updatePayment("purchaseType", e.target.value)}><option value="Ocean Freight">Ocean Freight</option><option value="Local Transport">Local Transport</option><option value="Expense">Expense</option><option value="Other">Other</option></select></FormField>
                     <FormField label="Company / Party"><input value={paymentForm.company} onChange={(e) => updatePayment("company", e.target.value)} placeholder="Carrier, transport company, supplier, or customer" /></FormField>
                     <FormField label="Amount"><input type="number" step="0.01" value={paymentForm.amount} onChange={(e) => updatePayment("amount", e.target.value)} /></FormField>
-                    <FormField label="Currency"><select value={paymentForm.currency} onChange={(e) => updatePayment("currency", e.target.value)}><option value="USD">USD</option><option value="TRY">TRY</option></select></FormField>
-                    <FormField label="FX Rate TRY/USD"><input type="number" step="0.0001" value={paymentForm.fxRate || activeFxRate} onChange={(e) => updatePayment("fxRate", e.target.value)} /></FormField>
+                    <FormField label="Currency"><select value={paymentForm.currency} onChange={(e) => updatePayment("currency", e.target.value)}><option value="USD">USD</option><option value="TRY">TRY</option><option value="EUR">EUR</option></select></FormField>
+                    <FormField label="FX Rate to USD"><input type="number" step="0.0001" value={paymentForm.fxRate || activeFxRate} onChange={(e) => updatePayment("fxRate", e.target.value)} /></FormField>
                     <FormField label="Payment Date"><input type="date" value={paymentForm.paidDate} onChange={(e) => updatePayment("paidDate", e.target.value)} /></FormField>
                     <FormField label="Note"><input value={paymentForm.note} onChange={(e) => updatePayment("note", e.target.value)} /></FormField>
                   </div>

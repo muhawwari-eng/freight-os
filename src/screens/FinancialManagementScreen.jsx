@@ -18,7 +18,7 @@ function newPaymentForm(activeFxRate) {
 
 function amountInCurrency(amountUsd, currency, fxRate) {
   const amount = Number(amountUsd || 0);
-  if (currency === "TRY") return amount * (Number(fxRate || 1) || 1);
+  if (currency !== "USD") return amount * (Number(fxRate || 1) || 1);
   return amount;
 }
 
@@ -283,8 +283,8 @@ export function FinancialManagementScreen({ shipments, activeFxRate, canManagePa
                   <FormField label="Customer / Supplier"><input value={invoiceForm.party} onChange={(event) => updateInvoice("party", event.target.value)} /></FormField>
                   <FormField label="Amount Before Tax"><input type="number" step="0.01" value={invoiceForm.amount} onChange={(event) => updateInvoice("amount", event.target.value)} /></FormField>
                   <FormField label="Tax Rate %"><input type="number" step="0.01" value={invoiceForm.taxRate} onChange={(event) => updateInvoice("taxRate", event.target.value)} /></FormField>
-                  <FormField label="Currency"><select value={invoiceForm.currency} onChange={(event) => updateInvoice("currency", event.target.value)}><option value="USD">USD</option><option value="TRY">TRY</option></select></FormField>
-                  <FormField label="FX Rate TRY/USD"><input type="number" step="0.0001" value={invoiceForm.fxRate} onChange={(event) => updateInvoice("fxRate", event.target.value)} /></FormField>
+                  <FormField label="Currency"><select value={invoiceForm.currency} onChange={(event) => updateInvoice("currency", event.target.value)}><option value="USD">USD</option><option value="TRY">TRY</option><option value="EUR">EUR</option></select></FormField>
+                  <FormField label="FX Rate to USD"><input type="number" step="0.0001" value={invoiceForm.fxRate} onChange={(event) => updateInvoice("fxRate", event.target.value)} /></FormField>
                   <FormField label="Note"><input value={invoiceForm.note} onChange={(event) => updateInvoice("note", event.target.value)} /></FormField>
                 </div>
                 <div className="actions mt">
@@ -304,8 +304,8 @@ export function FinancialManagementScreen({ shipments, activeFxRate, canManagePa
                   </FormField>
                   <FormField label="Amount"><input type="number" step="0.01" value={paymentForm.amount} onChange={(event) => setPaymentForm((previous) => ({ ...previous, amount: event.target.value }))} /></FormField>
                   <FormField label="Tax Rate %"><input type="number" step="0.01" value={paymentForm.taxRate} onChange={(event) => setPaymentForm((previous) => ({ ...previous, taxRate: event.target.value }))} /></FormField>
-                  <FormField label="Currency"><select value={paymentForm.currency} onChange={(event) => updatePaymentCurrency(event.target.value)}><option value="USD">USD</option><option value="TRY">TRY</option></select></FormField>
-                  <FormField label="FX Rate TRY/USD"><input type="number" step="0.0001" value={paymentForm.fxRate} onChange={(event) => setPaymentForm((previous) => ({ ...previous, fxRate: event.target.value }))} /></FormField>
+                  <FormField label="Currency"><select value={paymentForm.currency} onChange={(event) => updatePaymentCurrency(event.target.value)}><option value="USD">USD</option><option value="TRY">TRY</option><option value="EUR">EUR</option></select></FormField>
+                  <FormField label="FX Rate to USD"><input type="number" step="0.0001" value={paymentForm.fxRate} onChange={(event) => setPaymentForm((previous) => ({ ...previous, fxRate: event.target.value }))} /></FormField>
                   <FormField label="Payment Date"><input type="date" value={paymentForm.paidDate} onChange={(event) => setPaymentForm((previous) => ({ ...previous, paidDate: event.target.value }))} /></FormField>
                   <FormField label="Note"><input value={paymentForm.note} onChange={(event) => setPaymentForm((previous) => ({ ...previous, note: event.target.value }))} /></FormField>
                 </div>

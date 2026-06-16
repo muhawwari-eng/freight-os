@@ -14,8 +14,8 @@ export function ReceivablesScreen({ canManagePayments, addReceivableToShipment, 
                     <FormField label="Customer"><input value={shipments.find((s) => s.id === receivableForm.shipmentId)?.customer || ""} disabled /></FormField>
                     <FormField label="Invoice Amount USD"><input value={receivableForm.shipmentId ? money(calcOceanSell(shipments.find((s) => s.id === receivableForm.shipmentId) || {})) : ""} disabled /></FormField>
                     <FormField label="Collected Amount"><input type="number" step="0.01" value={receivableForm.amount} onChange={(e) => updateReceivable("amount", e.target.value)} /></FormField>
-                    <FormField label="Currency"><select value={receivableForm.currency} onChange={(e) => updateReceivable("currency", e.target.value)}><option value="USD">USD</option><option value="TRY">TRY</option></select></FormField>
-                    <FormField label="FX Rate TRY/USD"><input type="number" step="0.0001" value={receivableForm.fxRate || activeFxRate} onChange={(e) => updateReceivable("fxRate", e.target.value)} /></FormField>
+                    <FormField label="Currency"><select value={receivableForm.currency} onChange={(e) => updateReceivable("currency", e.target.value)}><option value="USD">USD</option><option value="TRY">TRY</option><option value="EUR">EUR</option></select></FormField>
+                    <FormField label="FX Rate to USD"><input type="number" step="0.0001" value={receivableForm.fxRate || activeFxRate} onChange={(e) => updateReceivable("fxRate", e.target.value)} /></FormField>
                     <FormField label="Collection Date"><input type="date" value={receivableForm.paidDate} onChange={(e) => updateReceivable("paidDate", e.target.value)} /></FormField>
                     <FormField label="Note"><input value={receivableForm.note} onChange={(e) => updateReceivable("note", e.target.value)} /></FormField>
                   </div>

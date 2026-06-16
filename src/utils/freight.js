@@ -30,6 +30,17 @@ export function getShipmentDocuments(shipment) {
   return Array.isArray(shipment.documents) ? shipment.documents : [];
 }
 
+export const requiredShipmentDocumentTypes = ["Bill of Lading", "Commercial Invoice", "Packing List"];
+
+export function getShipmentInternalNotes(shipment) {
+  return Array.isArray(shipment.internalNotes) ? shipment.internalNotes : [];
+}
+
+export function getMissingDocumentTypes(shipment) {
+  const uploadedTypes = new Set(getShipmentDocuments(shipment).map((document) => document.type || "Other"));
+  return requiredShipmentDocumentTypes.filter((type) => !uploadedTypes.has(type));
+}
+
 export function getTimelineEvents(shipment) {
   const savedEvents = Array.isArray(shipment.timeline) ? shipment.timeline : [];
   const baselineEvents = [
@@ -220,7 +231,7 @@ export function getPaymentRate(payment, shipment, exchangeRate) {
 
 export function paymentAmountUsd(payment, shipment, exchangeRate) {
   const amount = Number(payment.amount || 0);
-  if ((payment.currency || "USD") === "TRY") return amount / getPaymentRate(payment, shipment, exchangeRate);
+  if ((payment.currency || "USD") !== "USD") return amount / getPaymentRate(payment, shipment, exchangeRate);
   return amount;
 }
 
@@ -232,7 +243,7 @@ export function invoiceTaxAmount(invoice) {
 
 export function financialInvoiceAmountUsd(invoice, shipment, exchangeRate) {
   const amount = Number(invoice.amount || 0) + invoiceTaxAmount(invoice);
-  if ((invoice.currency || "USD") === "TRY") return amount / getRate({ fx: invoice.fxRate || shipment?.fx }, exchangeRate);
+  if ((invoice.currency || "USD") !== "USD") return amount / getRate({ fx: invoice.fxRate || shipment?.fx }, exchangeRate);
   return amount;
 }
 
@@ -403,6 +414,65 @@ export function getPaymentSummary(shipment, exchangeRate) {
   };
 }
 
+export function getShipmentHealth(shipment, exchangeRate) {
+  const missingDocuments = getMissingDocumentTypes(shipment);
+  const ledger = getShipmentFinancialLedger(shipment, exchangeRate);
+  const tasks = getTasks(shipment);
+  const overdueTasks = tasks.filter((task) => getTaskStatus(task) === "Overdue");
+  const dueSoonTasks = tasks.filter((task) => getTaskStatus(task) === "Due Soon");
+  const etaDays = getDaysLeft(shipment?.eta);
+  const profit = calcNetProfit(shipment, exchangeRate);
+  const reasons = [];
+  let score = 100;
+
+  if (profit < 0) {
+    score -= 35;
+    reasons.push("Negative profit");
+  }
+  if (etaDays !== null && etaDays < 0 && !["Arrived", "Completed"].includes(shipment?.status)) {
+    score -= 25;
+    reasons.push("ETA passed");
+  }
+  if (missingDocuments.length) {
+    score -= Math.min(25, missingDocuments.length * 8);
+    reasons.push(`${missingDocuments.length} missing document(s)`);
+  }
+  if (overdueTasks.length) {
+    score -= Math.min(20, overdueTasks.length * 10);
+    reasons.push(`${overdueTasks.length} overdue task(s)`);
+  } else if (dueSoonTasks.length) {
+    score -= Math.min(10, dueSoonTasks.length * 5);
+    reasons.push(`${dueSoonTasks.length} due soon task(s)`);
+  }
+  if (ledger.salesRemaining > 0.01) {
+    score -= 10;
+    reasons.push("Receivable open");
+  }
+
+  score = Math.max(0, Math.min(100, Math.round(score)));
+  const status = score < 55 ? "Critical" : score < 80 ? "Attention" : "Good";
+  return {
+    score,
+    status,
+    reasons: reasons.length ? reasons : ["On track"],
+    missingDocuments,
+    overdueTasks,
+    dueSoonTasks,
+  };
+}
+
+export function getShipmentCalendarEvents(shipments) {
+  return (shipments || [])
+    .flatMap((shipment) => [
+      shipment.cutOff && { id: `${shipment.id}-cutoff`, date: shipment.cutOff, type: "Cut-Off", shipment },
+      shipment.etd && { id: `${shipment.id}-etd`, date: shipment.etd, type: "ETD", shipment },
+      shipment.eta && { id: `${shipment.id}-eta`, date: shipment.eta, type: "ETA", shipment },
+      ...getTasks(shipment).filter((task) => task.dueDate).map((task) => ({ id: `${shipment.id}-${task.id}`, date: task.dueDate, type: task.taskType || "Task", title: task.title, shipment })),
+    ])
+    .filter(Boolean)
+    .sort((left, right) => String(left.date).localeCompare(String(right.date)));
+}
+
 export function getRate(shipment, exchangeRate) {
   // Historical shipments keep their own saved FX rate. The active rate is a fallback only.
   return Number(shipment.fx || exchangeRate || 1) || 1;
@@ -562,6 +632,7 @@ export function normalizeShipment(shipment) {
     financialInvoices: getFinancialInvoices(shipment),
     financialInvoiceSequences: shipment.financialInvoiceSequences || { sale: 0, purchase: 0 },
     documents: getShipmentDocuments(shipment),
+    internalNotes: getShipmentInternalNotes(shipment),
     timeline: Array.isArray(shipment.timeline) ? shipment.timeline : [],
     tasks: getTasks(shipment),
     emailReminderSent: shipment.emailReminderSent || {},

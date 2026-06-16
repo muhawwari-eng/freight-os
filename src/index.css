@@ -536,6 +536,196 @@ button {
   align-items: center;
 }
 
+.workspaceBar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 18px 0 4px;
+}
+
+.segmented,
+.savedViews,
+.bulkActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.segmented button,
+.savedViews button,
+.quickActionGrid button,
+.emailTemplateGrid button,
+.customerShipments button {
+  background: rgba(15, 23, 42, 0.88);
+  color: #dbeafe;
+  border: 1px solid rgba(56, 189, 248, 0.24);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.segmented button.active,
+.savedViews button.active {
+  background: rgba(14, 165, 233, 0.22);
+  color: #7dd3fc;
+  border-color: rgba(125, 211, 252, 0.62);
+}
+
+.healthPill {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 800;
+  background: rgba(34, 197, 94, 0.14);
+  color: #86efac;
+  border: 1px solid rgba(34, 197, 94, 0.34);
+}
+
+.healthPill.attention {
+  background: rgba(245, 158, 11, 0.14);
+  color: #fcd34d;
+  border-color: rgba(245, 158, 11, 0.34);
+}
+
+.healthPill.critical {
+  background: rgba(239, 68, 68, 0.14);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.34);
+}
+
+.kanbanBoard {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.kanbanColumn {
+  background: rgba(15, 23, 42, 0.58);
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  border-radius: 14px;
+  padding: 12px;
+  min-height: 180px;
+}
+
+.kanbanColumn h3 {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0;
+}
+
+.kanbanCard,
+.calendarEvent,
+.mobileOpsCard {
+  width: 100%;
+  text-align: left;
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+  background: rgba(14, 39, 65, 0.76);
+  color: #e5f3ff;
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.calendarList,
+.mobileOpsList,
+.quickActionGrid,
+.emailTemplateGrid,
+.customerShipments {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.calendarEvent {
+  grid-template-columns: 110px 90px 1fr;
+  align-items: center;
+}
+
+.quickActionGrid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.healthBox,
+.profitAlert,
+.documentChecklist,
+.noteComposer {
+  margin-top: 14px;
+}
+
+.healthBox,
+.profitAlert {
+  background: rgba(14, 39, 65, 0.66);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.profitAlert {
+  border-color: rgba(239, 68, 68, 0.44);
+  background: rgba(127, 29, 29, 0.22);
+}
+
+.documentChecklist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.documentChecklist span {
+  border-radius: 999px;
+  padding: 7px 10px;
+  font-weight: 800;
+  font-size: 12px;
+}
+
+.documentChecklist .uploaded {
+  background: rgba(34, 197, 94, 0.15);
+  color: #86efac;
+}
+
+.documentChecklist .missing {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fcd34d;
+}
+
+.noteComposer textarea {
+  width: 100%;
+  min-height: 92px;
+  resize: vertical;
+  background: #0f172a;
+  color: white;
+  border: 1px solid #334155;
+  border-radius: 14px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.customer360Metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.customer360Metrics span {
+  background: rgba(15, 23, 42, 0.62);
+  border-radius: 10px;
+  padding: 9px;
+}
+
+.customer360Metrics small,
+.emailTemplateGrid small {
+  display: block;
+  color: #93c5fd;
+}
+
 .mt { margin-top: 16px; }
 
 .filters {
@@ -1138,6 +1328,16 @@ button:disabled {
 
 @media (max-width: 900px) {
   .exchangeGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .kanbanBoard,
+  .quickActionGrid,
+  .customer360Metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .calendarEvent {
     grid-template-columns: 1fr;
   }
 }

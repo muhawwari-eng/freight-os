@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Card, DashboardCharts, FormField, ProfitCard, ShipmentCard } from "../components/freightComponents";
-import { money } from "../utils/freight";
+import { getDaysLeft, getMissingDocumentTypes, getShipmentFinancialLedger, money } from "../utils/freight";
 
 function MetricIcon({ type }) {
   const common = { fill: "none", stroke: "currentColor", strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: "2" };
@@ -119,6 +119,20 @@ function ActionList({ items, openShipmentDetails, limit }) {
 export function DashboardScreen({ totals, taskDashboard, canSeeFinance, notifications, clearNotifications, markNotificationRead, actionCenter, financialDashboard, cashPosition, monthlyFinancialDashboard, financialMonth, setFinancialMonth, dashboardCharts, shipments, activeFxRate, openShipmentDetails }) {
   const [dashboardTab, setDashboardTab] = useState("overview");
   const latestShipments = shipments.slice(0, 8);
+  const customerFollowUps = shipments
+    .map((shipment) => {
+      const ledger = getShipmentFinancialLedger(shipment, activeFxRate);
+      const etaDays = getDaysLeft(shipment.eta);
+      const missingDocs = getMissingDocumentTypes(shipment);
+      const reasons = [
+        ledger.salesRemaining > 0.01 && `Open ${money(ledger.salesRemaining)}`,
+        etaDays !== null && etaDays >= 0 && etaDays <= 5 && `ETA in ${etaDays} day(s)`,
+        missingDocs.length > 0 && `${missingDocs.length} document(s) missing`,
+      ].filter(Boolean);
+      return { shipment, reasons };
+    })
+    .filter((item) => item.reasons.length)
+    .slice(0, 8);
 
   return (
     <>
@@ -203,6 +217,32 @@ export function DashboardScreen({ totals, taskDashboard, canSeeFinance, notifica
               <span className="badge">{actionCenter.length} open</span>
             </div>
             <ActionList items={actionCenter} openShipmentDetails={openShipmentDetails} />
+          </section>
+
+          <section className="panel">
+            <div className="panelHead">
+              <div>
+                <h2>Customer Follow-up Queue</h2>
+                <p>Customer-facing files that need a message or confirmation.</p>
+              </div>
+              <span className="badge">{customerFollowUps.length} open</span>
+            </div>
+            <div className="actionList">
+              {customerFollowUps.map(({ shipment, reasons }) => (
+                <button className="actionItem medium" key={shipment.id} onClick={() => openShipmentDetails(shipment)}>
+                  <span className="actionSeverity">CLIENT</span>
+                  <span className="actionBody">
+                    <span className="actionTopline">
+                      <b>{shipment.customer || "Customer"}</b>
+                      <small>{shipment.id} | {shipment.pol} - {shipment.pod}</small>
+                    </span>
+                    <span className="actionDetail">{reasons.join(" | ")}</span>
+                  </span>
+                  <span className="actionOpen">Open</span>
+                </button>
+              ))}
+              {customerFollowUps.length === 0 && <div className="emptyState"><b>No customer follow-ups.</b><p>Open payments, close ETA files, and missing documents will appear here.</p></div>}
+            </div>
           </section>
         </>
       )}

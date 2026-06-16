@@ -1,6 +1,20 @@
 import { FormField } from "../components/freightComponents";
+import { getShipmentFinancialLedger, money } from "../utils/freight";
 
-export function CustomersScreen({ canEditCore, addCustomer, customerForm, updateCustomer, editingCustomerId, cancelEditCustomer, customers, startEditCustomer, role, deleteCustomer }) {
+export function CustomersScreen({ canEditCore, addCustomer, customerForm, updateCustomer, editingCustomerId, cancelEditCustomer, customers, startEditCustomer, role, deleteCustomer, shipments = [], activeFxRate, openShipmentDetails }) {
+  function getCustomerProfile(customerName) {
+    const customerShipments = shipments.filter((shipment) => shipment.customer === customerName);
+    const totals = customerShipments.reduce((summary, shipment) => {
+      const ledger = getShipmentFinancialLedger(shipment, activeFxRate);
+      return {
+        sales: summary.sales + ledger.salesTotal,
+        remaining: summary.remaining + ledger.salesRemaining,
+        profit: summary.profit + ledger.expectedProfit,
+      };
+    }, { sales: 0, remaining: 0, profit: 0 });
+    return { shipments: customerShipments, ...totals };
+  }
+
   return (
           <section className="panel twoCols">
             <div>
@@ -27,11 +41,31 @@ export function CustomersScreen({ canEditCore, addCustomer, customerForm, update
               <h3>Customer List</h3>
               <div className="miniList">
                 {customers.map((customer) => (
-                  <div className="miniCard" key={customer.id}>
+                  <div className="miniCard customer360Card" key={customer.id}>
                     <b>{customer.name}</b>
                     <p>{customer.contact || "No contact"} {customer.phone ? `• ${customer.phone}` : ""}</p>
                     <p>{customer.email || "No email"} {customer.country ? `• ${customer.country}` : ""}</p>
                     {customer.note && <p>{customer.note}</p>}
+                    {(() => {
+                      const profile = getCustomerProfile(customer.name);
+                      return (
+                        <>
+                          <div className="customer360Metrics">
+                            <span><small>Files</small><b>{profile.shipments.length}</b></span>
+                            <span><small>Sales</small><b>{money(profile.sales)}</b></span>
+                            <span><small>Open</small><b>{money(profile.remaining)}</b></span>
+                            <span><small>Profit</small><b>{money(profile.profit)}</b></span>
+                          </div>
+                          <div className="customerShipments">
+                            {profile.shipments.slice(0, 3).map((shipment) => (
+                              <button key={shipment.id} type="button" onClick={() => openShipmentDetails(shipment)}>
+                                {shipment.id} | {shipment.status} | ETA {shipment.eta || "Not set"}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      );
+                    })()}
                     {canEditCore && (
                       <div className="actions mt">
                         <button className="ghostBtn" onClick={() => startEditCustomer(customer)}>Edit</button>

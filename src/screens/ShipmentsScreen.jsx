@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { CustomerSelect, FormField, PortSelect } from "../components/freightComponents";
-import { calcNetProfit, calcOceanBuy, calcOceanSell, getShipmentBillableQty, getShipmentLoadDescription, getShipmentUnitLabel, money } from "../utils/freight";
+import { calcNetProfit, calcOceanBuy, calcOceanSell, getDaysLeft, getMissingDocumentTypes, getPaymentSummary, getShipmentBillableQty, getShipmentCalendarEvents, getShipmentHealth, getShipmentLoadDescription, getShipmentUnitLabel, money } from "../utils/freight";
 
 function SortHeader({ label, sortKey, sortConfig, onSort }) {
   const active = sortConfig.key === sortKey;
@@ -25,8 +25,12 @@ function getSortValue(shipment, key, activeFxRate) {
   return shipment[key] || "";
 }
 
-export function ShipmentsScreen({ resetShipmentFilters, query, setQuery, shipmentFilters, customers, updateShipmentFilter, suppliers, setLineFilter, ports, canSeeFinance, role, filtered, openShipmentDetails, activeFxRate, deleteShipment }) {
+export function ShipmentsScreen({ resetShipmentFilters, query, setQuery, shipmentFilters, customers, updateShipmentFilter, suppliers, setLineFilter, ports, canSeeFinance, role, filtered, openShipmentDetails, activeFxRate, deleteShipment, bulkUpdateShipments }) {
   const [sortConfig, setSortConfig] = useState({ key: "entryDate", direction: "desc" });
+  const [viewMode, setViewMode] = useState("table");
+  const [savedView, setSavedView] = useState("all");
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkStatus, setBulkStatus] = useState("Booked");
 
   function sortBy(key) {
     setSortConfig((current) => ({
@@ -35,9 +39,23 @@ export function ShipmentsScreen({ resetShipmentFilters, query, setQuery, shipmen
     }));
   }
 
+  const viewFilteredShipments = useMemo(() => {
+    return filtered.filter((shipment) => {
+      if (savedView === "all") return true;
+      if (savedView === "arriving") {
+        const days = getDaysLeft(shipment.eta);
+        return days !== null && days >= 0 && days <= 7;
+      }
+      if (savedView === "unpaid") return getPaymentSummary(shipment, activeFxRate).receivableRemaining > 0.01;
+      if (savedView === "negativeProfit") return calcNetProfit(shipment, activeFxRate) < 0;
+      if (savedView === "missingDocs") return getMissingDocumentTypes(shipment).length > 0;
+      return true;
+    });
+  }, [activeFxRate, filtered, savedView]);
+
   const sortedShipments = useMemo(() => {
     const direction = sortConfig.direction === "asc" ? 1 : -1;
-    return [...filtered].sort((left, right) => {
+    return [...viewFilteredShipments].sort((left, right) => {
       const leftValue = getSortValue(left, sortConfig.key, activeFxRate);
       const rightValue = getSortValue(right, sortConfig.key, activeFxRate);
       const leftEmpty = leftValue === "" || leftValue === null || leftValue === undefined;
@@ -47,7 +65,30 @@ export function ShipmentsScreen({ resetShipmentFilters, query, setQuery, shipmen
       if (typeof leftValue === "number" && typeof rightValue === "number") return (leftValue - rightValue) * direction;
       return String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true, sensitivity: "base" }) * direction;
     });
-  }, [activeFxRate, filtered, sortConfig]);
+  }, [activeFxRate, sortConfig, viewFilteredShipments]);
+
+  const kanbanStatuses = ["Draft", "Booked", "Loading", "In Transit", "At Sea", "At Port", "Arrived", "Completed"];
+  const calendarEvents = useMemo(() => getShipmentCalendarEvents(sortedShipments).slice(0, 80), [sortedShipments]);
+  const savedViews = [
+    ["all", "All"],
+    ["arriving", "Arriving 7 Days"],
+    ["unpaid", "Open Receivables"],
+    ["negativeProfit", "Negative Profit"],
+    ["missingDocs", "Missing Docs"],
+  ];
+
+  function toggleSelected(id, checked) {
+    setSelectedIds((previous) => checked ? [...new Set([...previous, id])] : previous.filter((item) => item !== id));
+  }
+
+  function renderHealth(shipment) {
+    const health = getShipmentHealth(shipment, activeFxRate);
+    return (
+      <span className={`healthPill ${health.status.toLowerCase()}`} title={health.reasons.join(", ")}>
+        {health.score} {health.status}
+      </span>
+    );
+  }
 
   return (
           <section className="panel">
@@ -73,11 +114,34 @@ export function ShipmentsScreen({ resetShipmentFilters, query, setQuery, shipmen
               <FormField label="Payment"><select value={shipmentFilters.paymentStatus} onChange={(e) => updateShipmentFilter("paymentStatus", e.target.value)}><option value="all">All Payments</option><option value="Unpaid">Unpaid</option><option value="Partially Paid">Partially Paid</option><option value="Fully Paid">Fully Paid</option></select></FormField>
             </div>
 
-            <div className="tableWrap">
+            <div className="workspaceBar">
+              <div className="segmented">
+                {["table", "kanban", "calendar", "mobile"].map((mode) => (
+                  <button key={mode} className={viewMode === mode ? "active" : ""} type="button" onClick={() => setViewMode(mode)}>{mode}</button>
+                ))}
+              </div>
+              <div className="savedViews">
+                {savedViews.map(([key, label]) => (
+                  <button key={key} className={savedView === key ? "active" : ""} type="button" onClick={() => setSavedView(key)}>{label}</button>
+                ))}
+              </div>
+              {role === "admin" && selectedIds.length > 0 && (
+                <div className="bulkActions">
+                  <select value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value)}>
+                    {kanbanStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+                  </select>
+                  <button className="saveBtn" type="button" onClick={() => { bulkUpdateShipments(selectedIds, { status: bulkStatus }); setSelectedIds([]); }}>Update {selectedIds.length}</button>
+                </div>
+              )}
+            </div>
+
+            {viewMode === "table" && <div className="tableWrap">
               <table>
                 <thead>
                   <tr>
+                    {role === "admin" && <th>Select</th>}
                     <SortHeader label="Shipment" sortKey="id" sortConfig={sortConfig} onSort={sortBy} />
+                    <th>Health</th>
                     <SortHeader label="Entry Date" sortKey="entryDate" sortConfig={sortConfig} onSort={sortBy} />
                     <SortHeader label="Type" sortKey="cargoType" sortConfig={sortConfig} onSort={sortBy} />
                     <SortHeader label="Load / Units" sortKey="containers" sortConfig={sortConfig} onSort={sortBy} />
@@ -98,7 +162,9 @@ export function ShipmentsScreen({ resetShipmentFilters, query, setQuery, shipmen
                 <tbody>
                   {sortedShipments.map((s) => (
                     <tr key={s.id} onClick={() => openShipmentDetails(s)}>
+                      {role === "admin" && <td onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={selectedIds.includes(s.id)} onChange={(event) => toggleSelected(s.id, event.target.checked)} /></td>}
                       <td>{s.id}</td>
+                      <td>{renderHealth(s)}</td>
                       <td>{s.entryDate || "Not set"}</td>
                       <td><span className={`typeBadge ${(s.cargoType || "FCL").toLowerCase()}`}>{s.cargoType || "FCL"}</span></td>
                       <td>
@@ -124,7 +190,51 @@ export function ShipmentsScreen({ resetShipmentFilters, query, setQuery, shipmen
                   ))}
                 </tbody>
               </table>
-            </div>
+            </div>}
+
+            {viewMode === "kanban" && (
+              <div className="kanbanBoard">
+                {kanbanStatuses.map((status) => (
+                  <div className="kanbanColumn" key={status}>
+                    <h3>{status} <span>{sortedShipments.filter((shipment) => shipment.status === status).length}</span></h3>
+                    {sortedShipments.filter((shipment) => shipment.status === status).map((shipment) => (
+                      <button className="kanbanCard" key={shipment.id} type="button" onClick={() => openShipmentDetails(shipment)}>
+                        <b>{shipment.id}</b>
+                        <span>{shipment.customer || "No customer"}</span>
+                        <small>{shipment.pol} - {shipment.pod}</small>
+                        {renderHealth(shipment)}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {viewMode === "calendar" && (
+              <div className="calendarList">
+                {calendarEvents.map((event) => (
+                  <button className="calendarEvent" key={event.id} type="button" onClick={() => openShipmentDetails(event.shipment)}>
+                    <span>{event.date}</span>
+                    <b>{event.type}</b>
+                    <p>{event.shipment.id} | {event.shipment.customer || "No customer"} | {event.shipment.pol} - {event.shipment.pod}</p>
+                  </button>
+                ))}
+                {calendarEvents.length === 0 && <div className="emptyState"><b>No calendar events</b><p>Cut-Off, ETD, ETA, and task dates will show here.</p></div>}
+              </div>
+            )}
+
+            {viewMode === "mobile" && (
+              <div className="mobileOpsList">
+                {sortedShipments.map((shipment) => (
+                  <button className="mobileOpsCard" key={shipment.id} type="button" onClick={() => openShipmentDetails(shipment)}>
+                    <span>{shipment.id}</span>
+                    <b>{shipment.customer || "No customer"}</b>
+                    <small>{shipment.pol} - {shipment.pod} | ETA {shipment.eta || "Not set"}</small>
+                    <div>{renderHealth(shipment)} <span className="badge">{shipment.status}</span></div>
+                  </button>
+                ))}
+              </div>
+            )}
           </section>
 
   );

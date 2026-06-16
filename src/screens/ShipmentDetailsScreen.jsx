@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { CargoSelect, ContainerSelect, CustomerSelect, FormField, PaymentSelect, PaymentSummaryBox, PortSelect, StatusSelect, SupplierSelect } from "../components/freightComponents";
 import { generateInvoicePdf } from "../services/pdf";
-import { calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanBuy, calcOceanSell, calcTotalCostUsd, calcTransportTry, getExpenses, getPayments, getShipmentBillableQty, getShipmentDocuments, getShipmentLoadDescription, getShipmentUnitLabel, getTaskStatus, getTasks, getTimelineEvents, getTransports, isAirShipment, isFclShipment, money } from "../utils/freight";
+import { calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanBuy, calcOceanSell, calcTotalCostUsd, calcTransportTry, getExpenses, getMissingDocumentTypes, getPayments, getShipmentBillableQty, getShipmentDocuments, getShipmentHealth, getShipmentInternalNotes, getShipmentLoadDescription, getShipmentUnitLabel, getTaskStatus, getTasks, getTimelineEvents, getTransports, isAirShipment, isFclShipment, money, requiredShipmentDocumentTypes } from "../utils/freight";
 
 const documentTypes = ["Bill of Lading", "Commercial Invoice", "Packing List", "Freight Invoice", "Customs", "Other"];
 
@@ -22,12 +22,13 @@ function downloadDocument(document) {
 }
 
 function DetailSubtabs({ activeTab, setActiveTab, canSeeFinance }) {
-  const tabs = ["overview", canSeeFinance && "finance", "tasks", "documents", "share", "timeline"].filter(Boolean);
+  const tabs = ["overview", canSeeFinance && "finance", "tasks", "documents", "notes", "share", "timeline"].filter(Boolean);
   const labels = {
     overview: "Overview",
     finance: "Finance",
     tasks: "Tasks",
     documents: "Documents",
+    notes: "Notes",
     share: "Share",
     timeline: "Timeline",
   };
@@ -91,9 +92,10 @@ function TimelineItem({ event }) {
   );
 }
 
-export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFinance, canEditOperation, startEditShipment, setTab, isEditing, saveEditShipment, editForm, customers, updateEdit, canEditCore, suppliers, ports, setIsEditing, createAutoTasksForShipment, toggleTaskStatus, role, deleteTask, saveShipmentDocument, deleteShipmentDocument, shareShipmentWithCustomer }) {
+export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFinance, canEditOperation, startEditShipment, setTab, isEditing, saveEditShipment, editForm, customers, updateEdit, canEditCore, suppliers, ports, setIsEditing, createAutoTasksForShipment, toggleTaskStatus, role, deleteTask, saveShipmentDocument, deleteShipmentDocument, shareShipmentWithCustomer, duplicateShipment, addInternalNoteToShipment }) {
   const [detailTab, setDetailTab] = useState("overview");
   const [documentType, setDocumentType] = useState("Bill of Lading");
+  const [noteText, setNoteText] = useState("");
   const [shareOptions, setShareOptions] = useState({
     includePaymentStatus: true,
     includeDocuments: true,
@@ -107,7 +109,15 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
   const expenses = getExpenses(selectedShipment);
   const payments = getPayments(selectedShipment);
   const documents = getShipmentDocuments(selectedShipment);
+  const internalNotes = getShipmentInternalNotes(selectedShipment);
   const timelineEvents = getTimelineEvents(selectedShipment);
+  const health = getShipmentHealth(selectedShipment, activeFxRate);
+  const missingDocuments = getMissingDocumentTypes(selectedShipment);
+  const emailTemplates = [
+    ["ETA Update", `Dear ${selectedShipment.customer || "Customer"},\n\nYour shipment ${selectedShipment.id} is currently ${selectedShipment.status || "in progress"}.\nRoute: ${selectedShipment.pol || "POL"} to ${selectedShipment.pod || "POD"}\nETA: ${selectedShipment.eta || "Not set"}\n\nBest regards,\nFSC Lojistik`],
+    ["Documents Request", `Dear ${selectedShipment.customer || "Customer"},\n\nPlease share the missing documents for shipment ${selectedShipment.id}: ${missingDocuments.join(", ") || "No missing documents"}.\n\nBest regards,\nFSC Lojistik`],
+    ["Payment Reminder", `Dear ${selectedShipment.customer || "Customer"},\n\nThis is a payment follow-up for shipment ${selectedShipment.id}. Please confirm the expected payment date.\n\nBest regards,\nFSC Lojistik`],
+  ];
   function updateShareOption(field, checked) {
     setShareOptions((previous) => ({ ...previous, [field]: checked }));
   }
@@ -121,6 +131,7 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
         </div>
         <div className="actions">
           {canEditOperation && <button className="ghostBtn" onClick={() => setDetailTab("share")}>Share with Customer</button>}
+          {canEditCore && <button className="ghostBtn" onClick={() => duplicateShipment(selectedShipment)}>Duplicate</button>}
           {canSeeFinance && <button className="saveBtn" onClick={() => generateInvoicePdf(selectedShipment, activeFxRate)}>Generate Invoice</button>}
           {canEditOperation && <button className="saveBtn" onClick={startEditShipment}>Edit Shipment</button>}
           <button className="ghostBtn" onClick={() => setTab("shipments")}>Back</button>
@@ -144,6 +155,26 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
                   <small>Status</small>
                   <span className="badge">{selectedShipment.status}</span>
                 </div>
+                <div>
+                  <small>Health</small>
+                  <span className={`healthPill ${health.status.toLowerCase()}`}>{health.score} {health.status}</span>
+                </div>
+              </div>
+
+              <div className="quickActionGrid">
+                <button type="button" onClick={() => setDetailTab("documents")}>Documents</button>
+                {canEditOperation && <button type="button" onClick={() => createAutoTasksForShipment(selectedShipment)}>Create Reminders</button>}
+                {canSeeFinance && <button type="button" onClick={() => setTab("financialManagement")}>Financial File</button>}
+                <button type="button" onClick={() => setDetailTab("share")}>Share Link</button>
+                <button type="button" onClick={() => setDetailTab("notes")}>Internal Notes</button>
+              </div>
+
+              <div className="healthBox">
+                <b>Shipment Health</b>
+                <p>{health.reasons.join(" | ")}</p>
+              </div>
+
+              <div className="detailHero">
                 <div>
                   <small>Load</small>
                   <b>{getShipmentLoadDescription(selectedShipment)}</b>
@@ -180,6 +211,12 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
               <div className="financeNote">
                 <b>Calculation rule:</b> Sale is the amount charged to the customer. Extra expenses are not added to sales; they are deducted from net profit.
               </div>
+              {calcNetProfit(selectedShipment, activeFxRate) < 0 && (
+                <div className="profitAlert">
+                  <b>Profit Alert</b>
+                  <p>This shipment is currently negative after costs and expenses.</p>
+                </div>
+              )}
               <div className="detailGrid">
                 <p><b>Customer Sale:</b> {money(calcOceanSell(selectedShipment))}</p>
                 <p><b>Freight Buy Cost:</b> {money(calcOceanBuy(selectedShipment))}</p>
@@ -266,6 +303,13 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
                 )}
               </div>
 
+              <div className="documentChecklist">
+                {requiredShipmentDocumentTypes.map((type) => {
+                  const uploaded = !missingDocuments.includes(type);
+                  return <span key={type} className={uploaded ? "uploaded" : "missing"}>{uploaded ? "OK" : "Missing"} {type}</span>;
+                })}
+              </div>
+
               {documents.length === 0 ? (
                 <div className="emptyState">
                   <b>No documents uploaded yet.</b>
@@ -303,6 +347,43 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
                 </div>
               )}
             </>
+          )}
+
+          {detailTab === "notes" && (
+            <div className="notesPanel">
+              <div className="panelHead">
+                <div>
+                  <h3>Internal Notes</h3>
+                  <p>Private notes for the operation and finance team.</p>
+                </div>
+              </div>
+              {canEditOperation && (
+                <div className="noteComposer">
+                  <textarea value={noteText} onChange={(event) => setNoteText(event.target.value)} placeholder="Write an internal note..." />
+                  <button className="saveBtn" type="button" onClick={() => { addInternalNoteToShipment(selectedShipment.id, noteText); setNoteText(""); }}>Add Note</button>
+                </div>
+              )}
+              <div className="miniList">
+                {internalNotes.map((note) => (
+                  <div className="miniCard" key={note.id}>
+                    <b>{note.createdBy || "unknown"}</b>
+                    <p>{note.note}</p>
+                    <small>{note.createdAt ? new Date(note.createdAt).toLocaleString() : "Not set"}</small>
+                  </div>
+                ))}
+                {internalNotes.length === 0 && <div className="emptyState"><b>No internal notes yet.</b><p>Important internal decisions and follow-ups will appear here.</p></div>}
+              </div>
+
+              <h3>Email Templates</h3>
+              <div className="emailTemplateGrid">
+                {emailTemplates.map(([title, body]) => (
+                  <button key={title} type="button" onClick={() => navigator.clipboard?.writeText(body)}>
+                    <b>{title}</b>
+                    <small>Copy ready message</small>
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
 
           {detailTab === "share" && (

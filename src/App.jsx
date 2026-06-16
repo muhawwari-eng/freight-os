@@ -6,7 +6,7 @@ import Login from "./Login";
 import { supabase } from "./supabase";
 import { DEFAULT_OPERATION_EMAIL, EMAILJS_PUBLIC_KEY, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, REMINDER_EMAIL_ENDPOINT } from "./config/email";
 import { defaultFxSettings, defaultShipments, defaultSuppliers, defaultWorldPorts, emptyBookingForm, emptyCustomerForm, emptyEditForm, emptyExpenseForm, emptyPaymentForm, emptyPortForm, emptyReceivableForm, emptySupplierForm, emptyTaskForm, emptyTransportForm, getLocalTodayDateKey, getNextCustomerId, getNextSupplierId } from "./data/defaults";
-import { addDays, buildReminderMessage, calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanSell, calcTotalCostUsd, dedupeShipments, getCurrentMonthKey, getDateRangeLabel, getDaysLeft, getExpenses, getFinancialInvoices, getInvoicePaymentType, getMonthKey, getNextFinancialInvoiceNumber, getNextShipmentId, getPaymentSummary, getPayments, getRate, getReminderEventsForShipment, getReminderSentKey, getShipmentBillableQty, getShipmentDocuments, getShipmentFinancialLedger, getShipmentLoadDescription, getShipmentReportDate, getShipmentUnitLabel, getTaskStatus, getTasks, getTransports, isAirShipment, isDateInRange, isFclShipment, isReminderAlreadySent, money, normalizeShipment, paymentAmountUsd, safeFileName, toDateKey } from "./utils/freight";
+import { addDays, buildReminderMessage, calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanSell, calcTotalCostUsd, dedupeShipments, getCurrentMonthKey, getDateRangeLabel, getDaysLeft, getExpenses, getFinancialInvoices, getInvoicePaymentType, getMonthKey, getNextFinancialInvoiceNumber, getNextShipmentId, getPaymentSummary, getPayments, getRate, getReminderEventsForShipment, getReminderSentKey, getShipmentBillableQty, getShipmentDocuments, getShipmentFinancialLedger, getShipmentInternalNotes, getShipmentLoadDescription, getShipmentReportDate, getShipmentUnitLabel, getTaskStatus, getTasks, getTransports, isAirShipment, isDateInRange, isFclShipment, isReminderAlreadySent, money, normalizeShipment, paymentAmountUsd, safeFileName, toDateKey } from "./utils/freight";
 import { ownedTables, readOwnedRows, saveOwnedRows } from "./services/ownedStorage";
 import { getTitle } from "./utils/titles";
 import { DashboardScreen } from "./screens/DashboardScreen";
@@ -1316,6 +1316,66 @@ export default function App() {
     };
   }
 
+  function duplicateShipment(sourceShipment) {
+    if (!canEditCore) return;
+    const source = normalizeShipment(sourceShipment);
+    const newId = getNextShipmentId(shipments);
+    const duplicate = normalizeShipment(withTimeline({
+      ...source,
+      id: newId,
+      createdAt: new Date().toISOString(),
+      entryDate: getLocalTodayDateKey(),
+      status: "Draft",
+      paymentStatus: "Unpaid",
+      bookingNo: "Not set",
+      documents: [],
+      payments: [],
+      financialInvoices: [],
+      financialInvoiceSequences: { sale: 0, purchase: 0 },
+      tasks: [],
+      timeline: [],
+      internalNotes: [],
+      tracking: {},
+    }, createTimelineEvent("Shipment", "Shipment duplicated", `Copied from ${source.id}`)));
+    setShipments((previous) => dedupeShipments([duplicate, ...previous]));
+    setSelectedShipment(duplicate);
+    setTab("details");
+  }
+
+  function addInternalNoteToShipment(shipmentId, noteText) {
+    const note = noteText.trim();
+    if (!note) return;
+    let updatedSelected = null;
+    setShipments((previous) => previous.map((shipment) => {
+      if (shipment.id !== shipmentId) return shipment;
+      const newNote = {
+        id: `NOTE-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        note,
+        createdAt: new Date().toISOString(),
+        createdBy: user?.email || "unknown",
+      };
+      const updated = normalizeShipment(withTimeline({
+        ...shipment,
+        internalNotes: [newNote, ...getShipmentInternalNotes(shipment)],
+      }, createTimelineEvent("Note", "Internal note added", note)));
+      if (selectedShipment?.id === shipmentId) updatedSelected = updated;
+      return updated;
+    }));
+    if (updatedSelected) setSelectedShipment(updatedSelected);
+  }
+
+  function bulkUpdateShipments(ids, updates) {
+    if (!canEditCore || !ids.length) return;
+    setShipments((previous) => previous.map((shipment) => {
+      if (!ids.includes(shipment.id)) return shipment;
+      return normalizeShipment(withTimeline({
+        ...shipment,
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      }, createTimelineEvent("Shipment", "Bulk update applied", Object.entries(updates).map(([key, value]) => `${key}: ${value}`).join(", "))));
+    }));
+  }
+
   function saveShipmentDocument(shipmentId, file, documentType = "Other") {
     if (!file) return;
     if (file.size > 4 * 1024 * 1024) {
@@ -2149,9 +2209,9 @@ function importLocalBackup(event) {
 
         {tab === "dashboard" && <DashboardScreen totals={totals} taskDashboard={taskDashboard} canSeeFinance={canSeeFinance} notifications={notifications} clearNotifications={clearNotifications} markNotificationRead={markNotificationRead} actionCenter={actionCenter} financialDashboard={financialDashboard} cashPosition={cashPosition} monthlyFinancialDashboard={monthlyFinancialDashboard} financialMonth={financialMonth} setFinancialMonth={setFinancialMonth} dashboardCharts={dashboardCharts} shipments={shipments} activeFxRate={activeFxRate} openShipmentDetails={openShipmentDetails} />}
 
-        {tab === "details" && selectedShipment && <ShipmentDetailsScreen selectedShipment={selectedShipment} activeFxRate={activeFxRate} canSeeFinance={canSeeFinance} canEditOperation={canEditOperation} startEditShipment={startEditShipment} setTab={setTab} isEditing={isEditing} saveEditShipment={saveEditShipment} editForm={editForm} customers={customers} updateEdit={updateEdit} canEditCore={canEditCore} suppliers={suppliers} ports={ports} setIsEditing={setIsEditing} createAutoTasksForShipment={createAutoTasksForShipment} toggleTaskStatus={toggleTaskStatus} role={role} deleteTask={deleteTask} saveShipmentDocument={saveShipmentDocument} deleteShipmentDocument={deleteShipmentDocument} shareShipmentWithCustomer={shareShipmentWithCustomer} />}
+        {tab === "details" && selectedShipment && <ShipmentDetailsScreen selectedShipment={selectedShipment} activeFxRate={activeFxRate} canSeeFinance={canSeeFinance} canEditOperation={canEditOperation} startEditShipment={startEditShipment} setTab={setTab} isEditing={isEditing} saveEditShipment={saveEditShipment} editForm={editForm} customers={customers} updateEdit={updateEdit} canEditCore={canEditCore} suppliers={suppliers} ports={ports} setIsEditing={setIsEditing} createAutoTasksForShipment={createAutoTasksForShipment} toggleTaskStatus={toggleTaskStatus} role={role} deleteTask={deleteTask} saveShipmentDocument={saveShipmentDocument} deleteShipmentDocument={deleteShipmentDocument} shareShipmentWithCustomer={shareShipmentWithCustomer} duplicateShipment={duplicateShipment} addInternalNoteToShipment={addInternalNoteToShipment} />}
 
-        {tab === "shipments" && <ShipmentsScreen resetShipmentFilters={resetShipmentFilters} query={query} setQuery={setQuery} shipmentFilters={shipmentFilters} customers={customers} updateShipmentFilter={updateShipmentFilter} suppliers={suppliers} setLineFilter={setLineFilter} ports={ports} canSeeFinance={canSeeFinance} role={role} filtered={filtered} openShipmentDetails={openShipmentDetails} activeFxRate={activeFxRate} deleteShipment={deleteShipment} />}
+        {tab === "shipments" && <ShipmentsScreen resetShipmentFilters={resetShipmentFilters} query={query} setQuery={setQuery} shipmentFilters={shipmentFilters} customers={customers} updateShipmentFilter={updateShipmentFilter} suppliers={suppliers} setLineFilter={setLineFilter} ports={ports} canSeeFinance={canSeeFinance} role={role} filtered={filtered} openShipmentDetails={openShipmentDetails} activeFxRate={activeFxRate} deleteShipment={deleteShipment} bulkUpdateShipments={bulkUpdateShipments} />}
 
         {tab === "booking" && <BookingScreen addShipmentFromForm={addShipmentFromForm} bookingForm={bookingForm} customers={customers} updateBooking={updateBooking} suppliers={suppliers} ports={ports} activeFxRate={activeFxRate} />}
 
@@ -2169,7 +2229,7 @@ function importLocalBackup(event) {
 
         {tab === "exchange" && canSeeFinance && <ExchangeScreen activeFxRate={activeFxRate} fxSettings={fxSettings} setFxSettings={setFxSettings} updateAutoRate={updateAutoRate} fxLoading={fxLoading} />}
 
-        {tab === "customers" && <CustomersScreen canEditCore={canEditCore} addCustomer={addCustomer} customerForm={customerForm} updateCustomer={updateCustomer} editingCustomerId={editingCustomerId} cancelEditCustomer={cancelEditCustomer} customers={customers} startEditCustomer={startEditCustomer} role={role} deleteCustomer={deleteCustomer} />}
+        {tab === "customers" && <CustomersScreen canEditCore={canEditCore} addCustomer={addCustomer} customerForm={customerForm} updateCustomer={updateCustomer} editingCustomerId={editingCustomerId} cancelEditCustomer={cancelEditCustomer} customers={customers} startEditCustomer={startEditCustomer} role={role} deleteCustomer={deleteCustomer} shipments={shipments} activeFxRate={activeFxRate} openShipmentDetails={openShipmentDetails} />}
 
         {tab === "suppliers" && <SuppliersScreen canEditCore={canEditCore} addSupplier={addSupplier} supplierForm={supplierForm} updateSupplier={updateSupplier} suppliers={suppliers} role={role} deleteSupplier={deleteSupplier} />}
 
