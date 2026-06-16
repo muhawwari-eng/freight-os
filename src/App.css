@@ -45,6 +45,11 @@ button {
   margin: 20px 0;
 }
 
+.compactStats {
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  margin: 16px 0;
+}
+
 .card, .panel {
   background: white;
   border-radius: 22px;

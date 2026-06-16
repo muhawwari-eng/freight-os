@@ -6,7 +6,7 @@ import Login from "./Login";
 import { supabase } from "./supabase";
 import { DEFAULT_OPERATION_EMAIL, EMAILJS_PUBLIC_KEY, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, REMINDER_EMAIL_ENDPOINT } from "./config/email";
 import { defaultFxSettings, defaultShipments, defaultSuppliers, defaultWorldPorts, emptyBookingForm, emptyCustomerForm, emptyEditForm, emptyExpenseForm, emptyPaymentForm, emptyPortForm, emptyReceivableForm, emptySupplierForm, emptyTaskForm, emptyTransportForm, getLocalTodayDateKey, getNextCustomerId, getNextSupplierId } from "./data/defaults";
-import { addDays, buildReminderMessage, calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanSell, calcTotalCostUsd, dedupeShipments, getDateRangeLabel, getExpenses, getFinancialInvoices, getInvoicePaymentType, getMonthKey, getNextFinancialInvoiceNumber, getNextShipmentId, getPaymentSummary, getPayments, getRate, getReminderEventsForShipment, getReminderSentKey, getShipmentBillableQty, getShipmentLoadDescription, getShipmentReportDate, getShipmentUnitLabel, getTaskStatus, getTasks, getTransports, isAirShipment, isDateInRange, isFclShipment, isReminderAlreadySent, money, normalizeShipment, paymentAmountUsd, safeFileName, toDateKey } from "./utils/freight";
+import { addDays, buildReminderMessage, calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanSell, calcTotalCostUsd, dedupeShipments, getCurrentMonthKey, getDateRangeLabel, getExpenses, getFinancialInvoices, getInvoicePaymentType, getMonthKey, getNextFinancialInvoiceNumber, getNextShipmentId, getPaymentSummary, getPayments, getRate, getReminderEventsForShipment, getReminderSentKey, getShipmentBillableQty, getShipmentFinancialLedger, getShipmentLoadDescription, getShipmentReportDate, getShipmentUnitLabel, getTaskStatus, getTasks, getTransports, isAirShipment, isDateInRange, isFclShipment, isReminderAlreadySent, money, normalizeShipment, paymentAmountUsd, safeFileName, toDateKey } from "./utils/freight";
 import { ownedTables, readOwnedRows, saveOwnedRows } from "./services/ownedStorage";
 import { getTitle } from "./utils/titles";
 import { DashboardScreen } from "./screens/DashboardScreen";
@@ -80,6 +80,7 @@ export default function App() {
   const [reportFromDate, setReportFromDate] = useState("");
   const [reportToDate, setReportToDate] = useState("");
   const [clientReportCustomer, setClientReportCustomer] = useState("all");
+  const [financialMonth, setFinancialMonth] = useState(getCurrentMonthKey());
   const [appSettings, setAppSettings] = useState(() => {
     try {
       const saved = localStorage.getItem("freight_app_settings");
@@ -301,6 +302,35 @@ export default function App() {
   }, [shipments, activeFxRate]);
 
   const cashPosition = financialDashboard.customerCollected - financialDashboard.supplierPaid;
+
+  const monthlyFinancialDashboard = useMemo(() => {
+    const selectedShipments = shipments.filter((shipment) => getMonthKey(getShipmentReportDate(shipment)) === financialMonth);
+    return selectedShipments.reduce(
+      (acc, shipment) => {
+        const ledger = getShipmentFinancialLedger(shipment, activeFxRate);
+        acc.shipments += 1;
+        acc.sales += ledger.salesTotal;
+        acc.purchases += ledger.purchasesTotal;
+        acc.expectedProfit += ledger.expectedProfit;
+        acc.cashIn += ledger.cashIn;
+        acc.cashOut += ledger.cashOut;
+        acc.receivableRemaining += ledger.salesRemaining;
+        acc.payableRemaining += ledger.purchasesRemaining;
+        return acc;
+      },
+      {
+        month: financialMonth,
+        shipments: 0,
+        sales: 0,
+        purchases: 0,
+        expectedProfit: 0,
+        cashIn: 0,
+        cashOut: 0,
+        receivableRemaining: 0,
+        payableRemaining: 0,
+      }
+    );
+  }, [shipments, activeFxRate, financialMonth]);
 
   const taskDashboard = useMemo(() => {
     const acc = { total: 0, pending: 0, done: 0, overdue: 0, dueSoon: 0 };
@@ -558,12 +588,39 @@ export default function App() {
     doc.save(`freight-os-detailed-report-${safeFileName(getDateRangeLabel(reportFromDate, reportToDate))}.pdf`);
   }
 
-  function getClientReportShipments() {
-    return reportData.shipments.filter((s) => clientReportCustomer === "all" || s.customer === clientReportCustomer);
-  }
+  const customerStatement = useMemo(() => {
+    const selectedShipments = reportData.shipments.filter((shipment) => clientReportCustomer === "all" || shipment.customer === clientReportCustomer);
+    const rows = selectedShipments.map((shipment) => {
+      const ledger = getShipmentFinancialLedger(shipment, activeFxRate);
+      return {
+        shipment,
+        invoiceUsd: ledger.salesTotal,
+        collectedUsd: ledger.salesPaid,
+        remainingUsd: ledger.salesRemaining,
+        status: ledger.salesRemaining <= 0.01 ? "Paid" : ledger.salesPaid > 0 ? "Partially Paid" : "Unpaid",
+      };
+    });
+    return rows.reduce(
+      (acc, row) => {
+        acc.rows.push(row);
+        acc.shipments += 1;
+        acc.invoiceUsd += row.invoiceUsd;
+        acc.collectedUsd += row.collectedUsd;
+        acc.remainingUsd += row.remainingUsd;
+        return acc;
+      },
+      { rows: [], shipments: 0, invoiceUsd: 0, collectedUsd: 0, remainingUsd: 0 }
+    );
+  }, [reportData.shipments, clientReportCustomer, activeFxRate]);
 
   function exportClientReportExcel() {
-    const rows = customerShipmentRows(getClientReportShipments());
+    const rows = customerStatement.rows.map(({ shipment, invoiceUsd, collectedUsd, remainingUsd, status }) => ({
+      ...customerShipmentRows([shipment])[0],
+      "Invoice Total USD": Number(invoiceUsd.toFixed(2)),
+      "Collected USD": Number(collectedUsd.toFixed(2)),
+      "Remaining USD": Number(remainingUsd.toFixed(2)),
+      "Statement Status": status,
+    }));
     if (!rows.length) {
       alert("No shipments found for this client and selected date range.");
       return;
@@ -572,8 +629,10 @@ export default function App() {
     const summary = [
       { Metric: "Customer", Value: customerName },
       { Metric: "Date Range", Value: getDateRangeLabel(reportFromDate, reportToDate) },
-      { Metric: "Shipments", Value: rows.length },
-      { Metric: "Total Customer Amount USD", Value: rows.reduce((sum, r) => sum + Number(r["Customer Amount USD"] || 0), 0) },
+      { Metric: "Shipments", Value: customerStatement.shipments },
+      { Metric: "Invoice Total USD", Value: Number(customerStatement.invoiceUsd.toFixed(2)) },
+      { Metric: "Collected USD", Value: Number(customerStatement.collectedUsd.toFixed(2)) },
+      { Metric: "Remaining USD", Value: Number(customerStatement.remainingUsd.toFixed(2)) },
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), "Summary");
@@ -583,15 +642,15 @@ export default function App() {
   }
 
   function exportClientReportPdf() {
-    const rows = getClientReportShipments();
-    if (!rows.length) {
+    if (!customerStatement.rows.length) {
       alert("No shipments found for this client and selected date range.");
       return;
     }
     const customerName = clientReportCustomer === "all" ? "All Customers" : clientReportCustomer;
+    const rows = customerStatement.rows.map((row) => row.shipment);
     const doc = new jsPDF({ orientation: "landscape" });
     doc.setFontSize(16);
-    doc.text(`Shipment Report - ${customerName}`, 14, 16);
+    doc.text(`Customer Statement - ${customerName}`, 14, 16);
     doc.setFontSize(10);
     doc.text(`Date Range: ${getDateRangeLabel(reportFromDate, reportToDate)} | Exported: ${new Date().toLocaleString()}`, 14, 24);
     autoTable(doc, {
@@ -1817,7 +1876,7 @@ function importLocalBackup(event) {
           {canEditCore && <button onClick={() => setTab("booking")}>+ New Shipment</button>}
         </header>
 
-        {tab === "dashboard" && <DashboardScreen totals={totals} taskDashboard={taskDashboard} canSeeFinance={canSeeFinance} notifications={notifications} clearNotifications={clearNotifications} markNotificationRead={markNotificationRead} financialDashboard={financialDashboard} cashPosition={cashPosition} dashboardCharts={dashboardCharts} shipments={shipments} activeFxRate={activeFxRate} openShipmentDetails={openShipmentDetails} />}
+        {tab === "dashboard" && <DashboardScreen totals={totals} taskDashboard={taskDashboard} canSeeFinance={canSeeFinance} notifications={notifications} clearNotifications={clearNotifications} markNotificationRead={markNotificationRead} financialDashboard={financialDashboard} cashPosition={cashPosition} monthlyFinancialDashboard={monthlyFinancialDashboard} financialMonth={financialMonth} setFinancialMonth={setFinancialMonth} dashboardCharts={dashboardCharts} shipments={shipments} activeFxRate={activeFxRate} openShipmentDetails={openShipmentDetails} />}
 
         {tab === "details" && selectedShipment && <ShipmentDetailsScreen selectedShipment={selectedShipment} activeFxRate={activeFxRate} canSeeFinance={canSeeFinance} canEditOperation={canEditOperation} startEditShipment={startEditShipment} setTab={setTab} isEditing={isEditing} saveEditShipment={saveEditShipment} editForm={editForm} customers={customers} updateEdit={updateEdit} canEditCore={canEditCore} suppliers={suppliers} ports={ports} setIsEditing={setIsEditing} createAutoTasksForShipment={createAutoTasksForShipment} toggleTaskStatus={toggleTaskStatus} role={role} deleteTask={deleteTask} />}
 
@@ -1845,7 +1904,7 @@ function importLocalBackup(event) {
 
         {tab === "ports" && <PortsScreen canEditCore={canEditCore} addPort={addPort} portForm={portForm} updatePort={updatePort} ports={ports} role={role} deletePort={deletePort} />}
 
-        {tab === "reports" && <ReportsScreen reportFromDate={reportFromDate} setReportFromDate={setReportFromDate} reportToDate={reportToDate} setReportToDate={setReportToDate} canSeeFinance={canSeeFinance} exportDetailedReportExcel={exportDetailedReportExcel} exportDetailedReportPdf={exportDetailedReportPdf} reportData={reportData} clientReportCustomer={clientReportCustomer} customers={customers} setClientReportCustomer={setClientReportCustomer} exportClientReportExcel={exportClientReportExcel} exportClientReportPdf={exportClientReportPdf} openShipmentDetails={openShipmentDetails} activeFxRate={activeFxRate} createBackup={createBackup} downloadLocalBackup={downloadLocalBackup} importLocalBackup={importLocalBackup} role={role} resetDemoData={resetDemoData} />}
+        {tab === "reports" && <ReportsScreen reportFromDate={reportFromDate} setReportFromDate={setReportFromDate} reportToDate={reportToDate} setReportToDate={setReportToDate} canSeeFinance={canSeeFinance} exportDetailedReportExcel={exportDetailedReportExcel} exportDetailedReportPdf={exportDetailedReportPdf} reportData={reportData} clientReportCustomer={clientReportCustomer} customers={customers} setClientReportCustomer={setClientReportCustomer} customerStatement={customerStatement} exportClientReportExcel={exportClientReportExcel} exportClientReportPdf={exportClientReportPdf} openShipmentDetails={openShipmentDetails} activeFxRate={activeFxRate} createBackup={createBackup} downloadLocalBackup={downloadLocalBackup} importLocalBackup={importLocalBackup} role={role} resetDemoData={resetDemoData} />}
 
         {tab === "settings" && role === "admin" && <SettingsScreen appSettings={appSettings} updateSettings={updateSettings} />}
 

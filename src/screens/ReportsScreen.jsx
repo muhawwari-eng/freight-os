@@ -1,7 +1,7 @@
 import { Card, CustomerSelect, FormField } from "../components/freightComponents";
 import { calcNetProfit, calcOceanSell, calcTotalCostUsd, getDateRangeLabel, getShipmentReportDate, money } from "../utils/freight";
 
-export function ReportsScreen({ reportFromDate, setReportFromDate, reportToDate, setReportToDate, canSeeFinance, exportDetailedReportExcel, exportDetailedReportPdf, reportData, clientReportCustomer, customers, setClientReportCustomer, exportClientReportExcel, exportClientReportPdf, openShipmentDetails, activeFxRate, createBackup, downloadLocalBackup, importLocalBackup, role, resetDemoData }) {
+export function ReportsScreen({ reportFromDate, setReportFromDate, reportToDate, setReportToDate, canSeeFinance, exportDetailedReportExcel, exportDetailedReportPdf, reportData, clientReportCustomer, customers, setClientReportCustomer, customerStatement, exportClientReportExcel, exportClientReportPdf, openShipmentDetails, activeFxRate, createBackup, downloadLocalBackup, importLocalBackup, role, resetDemoData }) {
   return (
           <section className="panel">
             <div className="panelHead">
@@ -66,16 +66,55 @@ export function ReportsScreen({ reportFromDate, setReportFromDate, reportToDate,
             <div className="note mt">
               <div className="panelHead">
                 <div>
-                  <h3>Client Shipment Report</h3>
-                  <p className="smallText">Customer-facing report: no buy costs, no internal expenses, and no profit.</p>
+                  <h3>Customer Statement</h3>
+                  <p className="smallText">Customer-facing statement with invoices, collected amounts, and remaining balances.</p>
                 </div>
                 <div className="actions">
                   <FormField label="Client">
                     <CustomerSelect value={clientReportCustomer} customers={[{ id: "all", name: "all" }, ...customers]} onChange={setClientReportCustomer} />
                   </FormField>
-                  <button className="saveBtn" onClick={exportClientReportExcel}>Export Client Excel</button>
-                  <button className="ghostBtn" onClick={exportClientReportPdf}>Export Client PDF</button>
+                  <button className="saveBtn" onClick={exportClientReportExcel}>Export Statement Excel</button>
+                  <button className="ghostBtn" onClick={exportClientReportPdf}>Export Statement PDF</button>
                 </div>
+              </div>
+              <section className="stats compactStats">
+                <Card icon="#" title="Statement Shipments" value={customerStatement.shipments} />
+                <Card icon="$" title="Invoice Total" value={money(customerStatement.invoiceUsd)} />
+                <Card icon="$" title="Collected" value={money(customerStatement.collectedUsd)} />
+                <Card icon="$" title="Remaining" value={money(customerStatement.remainingUsd)} />
+              </section>
+              <div className="tableWrap mt">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Shipment</th>
+                      <th>Customer</th>
+                      <th>Route</th>
+                      <th>Status</th>
+                      <th>Invoice</th>
+                      <th>Collected</th>
+                      <th>Remaining</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {customerStatement.rows.map(({ shipment, invoiceUsd, collectedUsd, remainingUsd, status }) => (
+                      <tr key={shipment.id} onClick={() => openShipmentDetails(shipment)}>
+                        <td>{getShipmentReportDate(shipment) ? new Date(getShipmentReportDate(shipment)).toISOString().slice(0, 10) : "Not set"}</td>
+                        <td>{shipment.id}</td>
+                        <td>{shipment.customer}</td>
+                        <td>{shipment.pol} â†’ {shipment.pod}</td>
+                        <td><span className="badge">{status}</span></td>
+                        <td>{money(invoiceUsd)}</td>
+                        <td>{money(collectedUsd)}</td>
+                        <td><b>{money(remainingUsd)}</b></td>
+                      </tr>
+                    ))}
+                    {customerStatement.rows.length === 0 && (
+                      <tr><td colSpan="8">No shipments found for this customer and date range.</td></tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
 
