@@ -6,7 +6,7 @@ import Login from "./Login";
 import { supabase } from "./supabase";
 import { DEFAULT_OPERATION_EMAIL, EMAILJS_PUBLIC_KEY, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, REMINDER_EMAIL_ENDPOINT } from "./config/email";
 import { defaultFxSettings, defaultShipments, defaultSuppliers, defaultWorldPorts, emptyBookingForm, emptyCustomerForm, emptyEditForm, emptyExpenseForm, emptyPaymentForm, emptyPortForm, emptyReceivableForm, emptySupplierForm, emptyTaskForm, emptyTransportForm, getLocalTodayDateKey, getNextCustomerId, getNextSupplierId } from "./data/defaults";
-import { addDays, buildReminderMessage, calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanSell, calcTotalCostUsd, dedupeShipments, getCurrentMonthKey, getDateRangeLabel, getExpenses, getFinancialInvoices, getInvoicePaymentType, getMonthKey, getNextFinancialInvoiceNumber, getNextShipmentId, getPaymentSummary, getPayments, getRate, getReminderEventsForShipment, getReminderSentKey, getShipmentBillableQty, getShipmentFinancialLedger, getShipmentLoadDescription, getShipmentReportDate, getShipmentUnitLabel, getTaskStatus, getTasks, getTransports, isAirShipment, isDateInRange, isFclShipment, isReminderAlreadySent, money, normalizeShipment, paymentAmountUsd, safeFileName, toDateKey } from "./utils/freight";
+import { addDays, buildReminderMessage, calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanSell, calcTotalCostUsd, dedupeShipments, getCurrentMonthKey, getDateRangeLabel, getDaysLeft, getExpenses, getFinancialInvoices, getInvoicePaymentType, getMonthKey, getNextFinancialInvoiceNumber, getNextShipmentId, getPaymentSummary, getPayments, getRate, getReminderEventsForShipment, getReminderSentKey, getShipmentBillableQty, getShipmentFinancialLedger, getShipmentLoadDescription, getShipmentReportDate, getShipmentUnitLabel, getTaskStatus, getTasks, getTransports, isAirShipment, isDateInRange, isFclShipment, isReminderAlreadySent, money, normalizeShipment, paymentAmountUsd, safeFileName, toDateKey } from "./utils/freight";
 import { ownedTables, readOwnedRows, saveOwnedRows } from "./services/ownedStorage";
 import { getTitle } from "./utils/titles";
 import { DashboardScreen } from "./screens/DashboardScreen";
@@ -331,6 +331,98 @@ export default function App() {
       }
     );
   }, [shipments, activeFxRate, financialMonth]);
+
+  const actionCenter = useMemo(() => {
+    const severityRank = { high: 0, warning: 1, info: 2 };
+    const items = [];
+
+    shipments.forEach((shipment) => {
+      const route = `${shipment.pol || ""} -> ${shipment.pod || ""}`;
+      const statusText = String(shipment.status || "").toLowerCase();
+      const ledger = getShipmentFinancialLedger(shipment, activeFxRate);
+
+      if (canSeeFinance) {
+        ledger.saleRows
+          .filter((row) => row.remainingUsd > 0.01 && row.dueDate)
+          .forEach((row) => {
+            const daysLeft = getDaysLeft(row.dueDate);
+            if (daysLeft === null || daysLeft > 3) return;
+            items.push({
+              id: `sale-${shipment.id}-${row.id}`,
+              severity: daysLeft < 0 ? "high" : "warning",
+              type: "Customer Collection",
+              title: daysLeft < 0 ? "Customer invoice overdue" : "Customer invoice due soon",
+              detail: `${shipment.customer || "Customer"} owes ${money(row.remainingUsd)} for ${row.invoiceNo || shipment.id}. Due ${row.dueDate}.`,
+              meta: `${shipment.id} | ${route}`,
+              daysLeft,
+              shipment,
+            });
+          });
+
+        ledger.purchaseRows
+          .filter((row) => row.remainingUsd > 0.01 && row.dueDate)
+          .forEach((row) => {
+            const daysLeft = getDaysLeft(row.dueDate);
+            if (daysLeft === null || daysLeft > 3) return;
+            items.push({
+              id: `purchase-${shipment.id}-${row.id}`,
+              severity: daysLeft < 0 ? "high" : "warning",
+              type: "Supplier Payment",
+              title: daysLeft < 0 ? "Supplier invoice overdue" : "Supplier invoice due soon",
+              detail: `${row.party || "Supplier"} balance ${money(row.remainingUsd)} for ${row.invoiceNo || shipment.id}. Due ${row.dueDate}.`,
+              meta: `${shipment.id} | ${route}`,
+              daysLeft,
+              shipment,
+            });
+          });
+      }
+
+      const etaDays = getDaysLeft(shipment.eta);
+      if (etaDays !== null && etaDays <= 2 && !statusText.includes("completed")) {
+        items.push({
+          id: `eta-${shipment.id}`,
+          severity: etaDays < 0 ? "high" : "warning",
+          type: "Arrival Follow-up",
+          title: etaDays < 0 ? "ETA passed" : "ETA is close",
+          detail: `${shipment.customer || "Customer"} shipment ETA ${shipment.eta}. Confirm arrival status and customer update.`,
+          meta: `${shipment.id} | ${route}`,
+          daysLeft: etaDays,
+          shipment,
+        });
+      }
+
+      if (statusText.includes("arrived") && !statusText.includes("completed")) {
+        items.push({
+          id: `arrived-${shipment.id}`,
+          severity: "info",
+          type: "Operations",
+          title: "Arrived shipment not completed",
+          detail: "Shipment is marked Arrived. Review documents, payments, and close it when ready.",
+          meta: `${shipment.id} | ${route}`,
+          daysLeft: 4,
+          shipment,
+        });
+      }
+
+      const netProfit = canSeeFinance ? calcNetProfit(shipment, activeFxRate) : 0;
+      if (canSeeFinance && netProfit < 0) {
+        items.push({
+          id: `loss-${shipment.id}`,
+          severity: "high",
+          type: "Profit Risk",
+          title: "Negative profit shipment",
+          detail: `Current net profit is ${money(netProfit)}. Review sale, purchase, expenses, and tax.`,
+          meta: `${shipment.id} | ${route}`,
+          daysLeft: -1,
+          shipment,
+        });
+      }
+    });
+
+    return items
+      .sort((a, b) => (severityRank[a.severity] ?? 9) - (severityRank[b.severity] ?? 9) || a.daysLeft - b.daysLeft)
+      .slice(0, 18);
+  }, [shipments, activeFxRate, canSeeFinance]);
 
   const taskDashboard = useMemo(() => {
     const acc = { total: 0, pending: 0, done: 0, overdue: 0, dueSoon: 0 };
@@ -1876,7 +1968,7 @@ function importLocalBackup(event) {
           {canEditCore && <button onClick={() => setTab("booking")}>+ New Shipment</button>}
         </header>
 
-        {tab === "dashboard" && <DashboardScreen totals={totals} taskDashboard={taskDashboard} canSeeFinance={canSeeFinance} notifications={notifications} clearNotifications={clearNotifications} markNotificationRead={markNotificationRead} financialDashboard={financialDashboard} cashPosition={cashPosition} monthlyFinancialDashboard={monthlyFinancialDashboard} financialMonth={financialMonth} setFinancialMonth={setFinancialMonth} dashboardCharts={dashboardCharts} shipments={shipments} activeFxRate={activeFxRate} openShipmentDetails={openShipmentDetails} />}
+        {tab === "dashboard" && <DashboardScreen totals={totals} taskDashboard={taskDashboard} canSeeFinance={canSeeFinance} notifications={notifications} clearNotifications={clearNotifications} markNotificationRead={markNotificationRead} actionCenter={actionCenter} financialDashboard={financialDashboard} cashPosition={cashPosition} monthlyFinancialDashboard={monthlyFinancialDashboard} financialMonth={financialMonth} setFinancialMonth={setFinancialMonth} dashboardCharts={dashboardCharts} shipments={shipments} activeFxRate={activeFxRate} openShipmentDetails={openShipmentDetails} />}
 
         {tab === "details" && selectedShipment && <ShipmentDetailsScreen selectedShipment={selectedShipment} activeFxRate={activeFxRate} canSeeFinance={canSeeFinance} canEditOperation={canEditOperation} startEditShipment={startEditShipment} setTab={setTab} isEditing={isEditing} saveEditShipment={saveEditShipment} editForm={editForm} customers={customers} updateEdit={updateEdit} canEditCore={canEditCore} suppliers={suppliers} ports={ports} setIsEditing={setIsEditing} createAutoTasksForShipment={createAutoTasksForShipment} toggleTaskStatus={toggleTaskStatus} role={role} deleteTask={deleteTask} />}
 

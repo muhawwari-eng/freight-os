@@ -1,7 +1,7 @@
 import { Card, DashboardCharts, FormField, ProfitCard, ShipmentCard } from "../components/freightComponents";
 import { money } from "../utils/freight";
 
-export function DashboardScreen({ totals, taskDashboard, canSeeFinance, notifications, clearNotifications, markNotificationRead, financialDashboard, cashPosition, monthlyFinancialDashboard, financialMonth, setFinancialMonth, dashboardCharts, shipments, activeFxRate, openShipmentDetails }) {
+export function DashboardScreen({ totals, taskDashboard, canSeeFinance, notifications, clearNotifications, markNotificationRead, actionCenter, financialDashboard, cashPosition, monthlyFinancialDashboard, financialMonth, setFinancialMonth, dashboardCharts, shipments, activeFxRate, openShipmentDetails }) {
   return (
           <>
             <section className="stats">
@@ -36,6 +36,34 @@ export function DashboardScreen({ totals, taskDashboard, canSeeFinance, notifica
                 </div>
               </section>
             )}
+
+            <section className="panel">
+              <div className="panelHead">
+                <div>
+                  <h2>Action Center</h2>
+                  <p>Urgent financial and operation follow-ups that need attention today.</p>
+                </div>
+                <span className="badge">{actionCenter.length} open</span>
+              </div>
+              <div className="actionList">
+                {actionCenter.map((item) => (
+                  <button className={`actionItem ${item.severity}`} key={item.id} onClick={() => openShipmentDetails(item.shipment)}>
+                    <span className="actionSeverity">{item.severity.toUpperCase()}</span>
+                    <span>
+                      <b>{item.title}</b>
+                      <small>{item.type} | {item.meta}</small>
+                      <p>{item.detail}</p>
+                    </span>
+                  </button>
+                ))}
+                {actionCenter.length === 0 && (
+                  <div className="emptyState">
+                    <b>No urgent actions right now.</b>
+                    <p>Overdue invoices, ETA follow-ups, arrived shipments, and loss alerts will appear here.</p>
+                  </div>
+                )}
+              </div>
+            </section>
 
             {canSeeFinance && (
               <>
