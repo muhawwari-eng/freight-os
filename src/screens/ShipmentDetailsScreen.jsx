@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { CargoSelect, ContainerSelect, CustomerSelect, FormField, PaymentSelect, PaymentSummaryBox, PortSelect, StatusSelect, SupplierSelect } from "../components/freightComponents";
 import { generateInvoicePdf } from "../services/pdf";
-import { calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanBuy, calcOceanSell, calcTotalCostUsd, calcTransportTry, getExpenses, getMissingDocumentTypes, getPayments, getShipmentBillableQty, getShipmentDocuments, getShipmentHealth, getShipmentInternalNotes, getShipmentLoadDescription, getShipmentUnitLabel, getTaskStatus, getTasks, getTimelineEvents, getTransports, isAirShipment, isFclShipment, money, requiredShipmentDocumentTypes } from "../utils/freight";
+import { calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanBuy, calcOceanSell, calcTotalCostUsd, calcTransportTry, getExpenses, getMissingDocumentTypes, getPayments, getShipmentBillableQty, getShipmentDocuments, getShipmentHealth, getShipmentInternalNotes, getShipmentLoadDescription, getShipmentShareLinks, getShipmentUnitLabel, getTaskStatus, getTasks, getTimelineEvents, getTransports, isAirShipment, isFclShipment, money, requiredShipmentDocumentTypes } from "../utils/freight";
 
 const documentTypes = ["Bill of Lading", "Commercial Invoice", "Packing List", "Freight Invoice", "Customs", "Other"];
 
@@ -92,7 +92,7 @@ function TimelineItem({ event }) {
   );
 }
 
-export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFinance, canEditOperation, startEditShipment, setTab, isEditing, saveEditShipment, editForm, customers, updateEdit, canEditCore, suppliers, ports, setIsEditing, createAutoTasksForShipment, toggleTaskStatus, role, deleteTask, saveShipmentDocument, deleteShipmentDocument, shareShipmentWithCustomer, duplicateShipment, addInternalNoteToShipment }) {
+export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFinance, canEditOperation, startEditShipment, setTab, isEditing, saveEditShipment, editForm, customers, updateEdit, canEditCore, suppliers, ports, setIsEditing, createAutoTasksForShipment, toggleTaskStatus, role, deleteTask, saveShipmentDocument, deleteShipmentDocument, toggleShipmentDocumentCustomerDownload, shareShipmentWithCustomer, disableShipmentShareLink, duplicateShipment, addInternalNoteToShipment }) {
   const [detailTab, setDetailTab] = useState("overview");
   const [documentType, setDocumentType] = useState("Bill of Lading");
   const [noteText, setNoteText] = useState("");
@@ -109,6 +109,7 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
   const expenses = getExpenses(selectedShipment);
   const payments = getPayments(selectedShipment);
   const documents = getShipmentDocuments(selectedShipment);
+  const shareLinks = getShipmentShareLinks(selectedShipment);
   const internalNotes = getShipmentInternalNotes(selectedShipment);
   const timelineEvents = getTimelineEvents(selectedShipment);
   const health = getShipmentHealth(selectedShipment, activeFxRate);
@@ -324,6 +325,7 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
                         <th>File</th>
                         <th>Size</th>
                         <th>Uploaded</th>
+                        <th>Customer Download</th>
                         <th>Actions</th>
                       </tr>
                     </thead>
@@ -334,9 +336,11 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
                           <td>{document.name}</td>
                           <td>{formatFileSize(document.size)}</td>
                           <td>{document.uploadedAt ? new Date(document.uploadedAt).toLocaleString() : "Not set"}</td>
+                          <td><span className={document.customerCanDownload ? "badge" : "paymentBadge"}>{document.customerCanDownload ? "Enabled" : "Disabled"}</span></td>
                           <td>
                             <div className="actions">
                               <button className="ghostBtn" onClick={() => downloadDocument(document)}>Download</button>
+                              {canEditOperation && <button className="ghostBtn" onClick={() => toggleShipmentDocumentCustomerDownload(selectedShipment.id, document.id)}>{document.customerCanDownload ? "Disable Customer" : "Allow Customer"}</button>}
                               {canEditOperation && <button className="dangerBtn" onClick={() => deleteShipmentDocument(selectedShipment.id, document.id)}>Delete</button>}
                             </div>
                           </td>
@@ -421,9 +425,27 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
                 <button className="saveBtn" onClick={() => shareShipmentWithCustomer(selectedShipment, shareOptions)}>Generate / Copy Link</button>
                 <button className="ghostBtn" onClick={() => setShareOptions({ includePaymentStatus: true, includeDocuments: true, includeInvoiceAmount: false })}>Reset Defaults</button>
               </div>
+              <div className="shareLinksList mt">
+                <h3>Active Share Links</h3>
+                {shareLinks.length === 0 && <p>No token links generated yet.</p>}
+                {shareLinks.map((link) => {
+                  const url = `${window.location.origin}${window.location.pathname}?shareToken=${encodeURIComponent(link.token)}`;
+                  return (
+                    <div className="miniCard" key={link.id}>
+                      <b>{link.disabled ? "Disabled" : "Active"} link</b>
+                      <p>{link.createdAt ? new Date(link.createdAt).toLocaleString() : "Not set"} | {link.createdBy || "unknown"}</p>
+                      <small>{url}</small>
+                      <div className="actions mt">
+                        <button className="ghostBtn" type="button" onClick={() => navigator.clipboard?.writeText(url)}>Copy</button>
+                        {!link.disabled && canEditOperation && <button className="dangerBtn" type="button" onClick={() => disableShipmentShareLink(selectedShipment.id, link.id)}>Disable</button>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
               <div className="emptyState mt">
                 <b>Link behavior</b>
-                <p>Each generated link is a snapshot with the options above. Generate a new link after changing permissions.</p>
+                <p>Each generated link is stored with a token and can be disabled. Generate a new link after changing permissions.</p>
               </div>
             </div>
           )}

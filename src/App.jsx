@@ -6,7 +6,7 @@ import Login from "./Login";
 import { supabase } from "./supabase";
 import { DEFAULT_OPERATION_EMAIL, EMAILJS_PUBLIC_KEY, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, REMINDER_EMAIL_ENDPOINT } from "./config/email";
 import { defaultFxSettings, defaultShipments, defaultSuppliers, defaultWorldPorts, emptyBookingForm, emptyCustomerForm, emptyEditForm, emptyExpenseForm, emptyPaymentForm, emptyPortForm, emptyReceivableForm, emptySupplierForm, emptyTaskForm, emptyTransportForm, getLocalTodayDateKey, getNextCustomerId, getNextSupplierId } from "./data/defaults";
-import { addDays, buildReminderMessage, calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanSell, calcTotalCostUsd, dedupeShipments, getCurrentMonthKey, getDateRangeLabel, getDaysLeft, getExpenses, getFinancialInvoices, getInvoicePaymentType, getMonthKey, getNextFinancialInvoiceNumber, getNextShipmentId, getPaymentSummary, getPayments, getRate, getReminderEventsForShipment, getReminderSentKey, getShipmentBillableQty, getShipmentDocuments, getShipmentFinancialLedger, getShipmentInternalNotes, getShipmentLoadDescription, getShipmentReportDate, getShipmentUnitLabel, getTaskStatus, getTasks, getTransports, isAirShipment, isDateInRange, isFclShipment, isReminderAlreadySent, money, normalizeShipment, paymentAmountUsd, safeFileName, toDateKey } from "./utils/freight";
+import { addDays, buildReminderMessage, calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanSell, calcTotalCostUsd, dedupeShipments, getAgingReport, getCurrentMonthKey, getDateRangeLabel, getDaysLeft, getExpenses, getFinancialInvoices, getInvoicePaymentType, getMonthKey, getNextFinancialInvoiceNumber, getNextShipmentId, getPaymentSummary, getPayments, getRate, getReminderEventsForShipment, getReminderSentKey, getShipmentBillableQty, getShipmentDocuments, getShipmentFinancialLedger, getShipmentInternalNotes, getShipmentLoadDescription, getShipmentReportDate, getShipmentShareLinks, getShipmentUnitLabel, getTaskStatus, getTasks, getTransports, isAirShipment, isDateInRange, isFclShipment, isReminderAlreadySent, money, normalizeShipment, paymentAmountUsd, safeFileName, toDateKey } from "./utils/freight";
 import { ownedTables, readOwnedRows, saveOwnedRows } from "./services/ownedStorage";
 import { getTitle } from "./utils/titles";
 import { DashboardScreen } from "./screens/DashboardScreen";
@@ -27,10 +27,7 @@ import { ReportsScreen } from "./screens/ReportsScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import { ApiScreen } from "./screens/ApiScreen";
 import { PublicShareScreen } from "./screens/PublicShareScreen";
-
-function encodeSharePayload(payload) {
-  return btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
-}
+import { AuditLogScreen } from "./screens/AuditLogScreen";
 
 function decodeSharePayload(value) {
   try {
@@ -70,6 +67,7 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [lineFilter, setLineFilter] = useState("all");
   const [tab, setTab] = useState("dashboard");
+  const [globalSearch, setGlobalSearch] = useState("");
   const [selectedShipment, setSelectedShipment] = useState(null);
   const [bookingForm, setBookingForm] = useState(emptyBookingForm);
   const [transportForm, setTransportForm] = useState(emptyTransportForm);
@@ -95,16 +93,29 @@ export default function App() {
   const [reportToDate, setReportToDate] = useState("");
   const [clientReportCustomer, setClientReportCustomer] = useState("all");
   const [financialMonth, setFinancialMonth] = useState(getCurrentMonthKey());
+  const defaultAppSettings = {
+    operationEmail: DEFAULT_OPERATION_EMAIL,
+    companyEmail: "info@fsclojistik.com",
+    autoEmailReminders: true,
+    etaReminderDays: 1,
+    etdReminderDays: 1,
+    cutOffReminderDays: 1,
+    invoiceDueReminderDays: 3,
+    storageBucket: "shipment-documents",
+  };
   const [appSettings, setAppSettings] = useState(() => {
     try {
       const saved = localStorage.getItem("freight_app_settings");
-      return saved
-        ? { operationEmail: DEFAULT_OPERATION_EMAIL, companyEmail: "info@fsclojistik.com", autoEmailReminders: true, ...JSON.parse(saved) }
-        : { operationEmail: DEFAULT_OPERATION_EMAIL, companyEmail: "info@fsclojistik.com", autoEmailReminders: true };
+      return saved ? { ...defaultAppSettings, ...JSON.parse(saved) } : defaultAppSettings;
     } catch {
-      return { operationEmail: DEFAULT_OPERATION_EMAIL, companyEmail: "info@fsclojistik.com", autoEmailReminders: true };
+      return defaultAppSettings;
     }
   });
+  const [publicShare, setPublicShare] = useState(() => {
+    const snapshotShare = new URLSearchParams(window.location.search).get("share");
+    return snapshotShare ? decodeSharePayload(snapshotShare) : null;
+  });
+  const [publicShareStatus, setPublicShareStatus] = useState("ready");
 
   const role = profile?.role || "viewer";
   const canSeeFinance = role === "admin" || role === "partner";
@@ -112,9 +123,71 @@ export default function App() {
   const canManagePayments = role === "admin";
   const canEditOperation = canEditCore || role === "operation";
   const activeFxRate = Number(fxSettings.mode === "auto" ? fxSettings.autoRate : fxSettings.manualRate) || 1;
-  const publicShare = useMemo(() => {
-    const shareValue = new URLSearchParams(window.location.search).get("share");
-    return shareValue ? decodeSharePayload(shareValue) : null;
+  const globalSearchResults = useMemo(() => {
+    const term = globalSearch.trim().toLowerCase();
+    if (term.length < 2) return [];
+    return shipments.flatMap((shipment) => {
+      const matches = [];
+      const fields = [
+        ["Shipment", shipment.id],
+        ["Booking", shipment.bookingNo],
+        ["Customer", shipment.customer],
+        ["Carrier", shipment.line],
+        ["Route", `${shipment.pol || ""} ${shipment.pod || ""}`],
+      ];
+      fields.forEach(([type, value]) => {
+        if (String(value || "").toLowerCase().includes(term)) matches.push({ type, label: value, shipment });
+      });
+      getFinancialInvoices(shipment).forEach((invoice) => {
+        if ([invoice.invoiceNo, invoice.party, invoice.category].some((value) => String(value || "").toLowerCase().includes(term))) {
+          matches.push({ type: "Invoice", label: `${invoice.invoiceNo || "Invoice"} | ${invoice.party || ""}`, shipment });
+        }
+      });
+      getShipmentDocuments(shipment).forEach((document) => {
+        if ([document.name, document.type].some((value) => String(value || "").toLowerCase().includes(term))) {
+          matches.push({ type: "Document", label: `${document.type || "Document"} | ${document.name}`, shipment });
+        }
+      });
+      return matches;
+    }).slice(0, 8);
+  }, [globalSearch, shipments]);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const snapshotShare = params.get("share");
+    const tokenShare = params.get("shareToken");
+
+    if (snapshotShare) return;
+
+    if (!tokenShare) return;
+
+    let cancelled = false;
+    async function loadPublicShare() {
+      setPublicShareStatus("loading");
+      try {
+        const { data, error } = await supabase.from(ownedTables.shipments).select("item_id,data");
+        if (error) throw error;
+        const match = (data || [])
+          .map((row) => normalizeShipment({ ...row.data, id: row.data?.id || row.item_id }))
+          .find((shipment) => getShipmentShareLinks(shipment).some((link) => link.token === tokenShare));
+        const link = match ? getShipmentShareLinks(match).find((item) => item.token === tokenShare) : null;
+        if (!match || !link) throw new Error("Share link was not found.");
+        if (link.disabled) throw new Error("This share link is disabled.");
+        if (!cancelled) {
+          setPublicShare(buildPublicSharePayload(match, link.permissions || {}, link.token, link.createdAt));
+          setPublicShareStatus("ready");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setPublicShare({ error: error.message || "Share link is not available." });
+          setPublicShareStatus("error");
+        }
+      }
+    }
+
+    loadPublicShare();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -708,6 +781,8 @@ export default function App() {
         collectedUsd: ledger.salesPaid,
         remainingUsd: ledger.salesRemaining,
         status: ledger.salesRemaining <= 0.01 ? "Paid" : ledger.salesPaid > 0 ? "Partially Paid" : "Unpaid",
+        invoices: ledger.saleRows,
+        payments: getPayments(shipment).filter((payment) => payment.purchaseType === "Customer Receipt"),
       };
     });
     return rows.reduce(
@@ -722,6 +797,31 @@ export default function App() {
       { rows: [], shipments: 0, invoiceUsd: 0, collectedUsd: 0, remainingUsd: 0 }
     );
   }, [reportData.shipments, clientReportCustomer, activeFxRate]);
+
+  const agingReport = useMemo(() => getAgingReport(reportData.shipments, activeFxRate), [reportData.shipments, activeFxRate]);
+
+  const partnerStats = useMemo(() => {
+    const customersMap = new Map();
+    const suppliersMap = new Map();
+    reportData.shipments.forEach((shipment) => {
+      const customerKey = shipment.customer || "Unknown Customer";
+      const customer = customersMap.get(customerKey) || { name: customerKey, shipments: 0, revenue: 0, profit: 0 };
+      customer.shipments += 1;
+      customer.revenue += calcOceanSell(shipment);
+      customer.profit += calcNetProfit(shipment, activeFxRate);
+      customersMap.set(customerKey, customer);
+
+      const supplierKey = shipment.line || "Unknown Supplier";
+      const supplier = suppliersMap.get(supplierKey) || { name: supplierKey, shipments: 0, cost: 0 };
+      supplier.shipments += 1;
+      supplier.cost += calcTotalCostUsd(shipment, activeFxRate);
+      suppliersMap.set(supplierKey, supplier);
+    });
+    return {
+      customers: Array.from(customersMap.values()).sort((a, b) => b.profit - a.profit).slice(0, 10),
+      suppliers: Array.from(suppliersMap.values()).sort((a, b) => b.cost - a.cost).slice(0, 10),
+    };
+  }, [reportData.shipments, activeFxRate]);
 
   function exportClientReportExcel() {
     const rows = customerStatement.rows.map(({ shipment, invoiceUsd, collectedUsd, remainingUsd, status }) => ({
@@ -946,13 +1046,29 @@ export default function App() {
   }
 
   function buildReminderCandidates() {
-    const tomorrow = toDateKey(addDays(new Date(), 1));
+    const daysByEvent = {
+      cutOff: Number(appSettings.cutOffReminderDays ?? 1),
+      etd: Number(appSettings.etdReminderDays ?? 1),
+      eta: Number(appSettings.etaReminderDays ?? 1),
+    };
     return shipments.flatMap((shipment) => {
       const sent = shipment.emailReminderSent || {};
-      return getReminderEventsForShipment(shipment)
-        .filter((event) => toDateKey(event.eventDate) === tomorrow)
-        .filter((event) => !isReminderAlreadySent(sent, event))
-        .map((event) => ({ shipment, event }));
+      const scheduleEvents = getReminderEventsForShipment(shipment)
+        .filter((event) => toDateKey(event.eventDate) === toDateKey(addDays(new Date(), daysByEvent[event.key] ?? 1)))
+        .filter((event) => !isReminderAlreadySent(sent, event));
+      const invoiceEvents = getShipmentFinancialLedger(shipment, activeFxRate).rows
+        .filter((invoice) => invoice.remainingUsd > 0.01 && invoice.dueDate)
+        .map((invoice) => ({
+          key: `invoice-${invoice.id}`,
+          label: "Invoice Due Reminder",
+          taskType: "Payment",
+          eventDate: invoice.dueDate,
+          title: `Invoice due - ${invoice.invoiceNo}`,
+          invoice,
+        }))
+        .filter((event) => toDateKey(event.eventDate) === toDateKey(addDays(new Date(), Number(appSettings.invoiceDueReminderDays ?? 3))))
+        .filter((event) => !isReminderAlreadySent(sent, event));
+      return [...scheduleEvents, ...invoiceEvents].map((event) => ({ shipment, event }));
     });
   }
 
@@ -1058,7 +1174,7 @@ export default function App() {
     const candidates = buildReminderCandidates();
     if (!candidates.length) {
       if (source === "manual") {
-        pushNotification({ type: "info", title: "No reminders to send", message: "No Cut-Off, Departure, or Arrival reminders due tomorrow. Only shipments with tomorrow's Cut-Off/ETD/ETA are sent." });
+        pushNotification({ type: "info", title: "No reminders to send", message: "No Cut-Off, Departure, Arrival, or invoice due reminders match the current notification settings." });
       }
       return;
     }
@@ -1090,7 +1206,7 @@ export default function App() {
     }, 2500);
 
     return () => clearTimeout(timer);
-  }, [user?.id, onlineDataLoaded, canEditOperation, appSettings.autoEmailReminders, shipments.length, customers.length]);
+  }, [user?.id, onlineDataLoaded, canEditOperation, appSettings.autoEmailReminders, appSettings.cutOffReminderDays, appSettings.etdReminderDays, appSettings.etaReminderDays, appSettings.invoiceDueReminderDays, shipments.length, customers.length]);
 
   function updateSettings(field, value) {
     setAppSettings((prev) => ({ ...prev, [field]: value }));
@@ -1236,7 +1352,7 @@ export default function App() {
     setTab("details");
   }
 
-  async function shareShipmentWithCustomer(shipment, options = {}) {
+  function buildPublicSharePayload(shipment, options = {}, token = "", sharedAt = new Date().toISOString()) {
     const normalized = normalizeShipment(shipment);
     const shareOptions = {
       includePaymentStatus: true,
@@ -1244,8 +1360,9 @@ export default function App() {
       includeInvoiceAmount: false,
       ...options,
     };
-    const payload = {
-      version: 1,
+    return {
+      version: 2,
+      token,
       permissions: shareOptions,
       id: normalized.id,
       customer: normalized.customer,
@@ -1260,17 +1377,50 @@ export default function App() {
       cutOff: normalized.cutOff,
       etd: normalized.etd,
       eta: normalized.eta,
-      sharedAt: new Date().toISOString(),
+      sharedAt,
       documents: shareOptions.includeDocuments
         ? getShipmentDocuments(normalized).map((document) => ({
           id: document.id,
           name: document.name,
           type: document.type,
           uploadedAt: document.uploadedAt,
+          customerCanDownload: Boolean(document.customerCanDownload),
+          downloadUrl: document.customerCanDownload ? (document.publicUrl || document.dataUrl || "") : "",
         }))
         : [],
     };
-    const url = `${window.location.origin}${window.location.pathname}?share=${encodeSharePayload(payload)}`;
+  }
+
+  async function shareShipmentWithCustomer(shipment, options = {}) {
+    const normalized = normalizeShipment(shipment);
+    const shareOptions = {
+      includePaymentStatus: true,
+      includeDocuments: true,
+      includeInvoiceAmount: false,
+      ...options,
+    };
+    const token = `shr_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
+    const newLink = {
+      id: `SHARE-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      token,
+      permissions: shareOptions,
+      disabled: false,
+      createdAt: new Date().toISOString(),
+      createdBy: user?.email || "unknown",
+    };
+    const url = `${window.location.origin}${window.location.pathname}?shareToken=${encodeURIComponent(token)}`;
+
+    let updatedSelected = null;
+    setShipments((previous) => previous.map((item) => {
+      if (item.id !== normalized.id) return item;
+      const updated = normalizeShipment(withTimeline({
+        ...item,
+        shareLinks: [newLink, ...getShipmentShareLinks(item)],
+      }, createTimelineEvent("Share", "Customer share link generated", `Token: ${token}`)));
+      updatedSelected = updated;
+      return updated;
+    }));
+    if (updatedSelected) setSelectedShipment(updatedSelected);
 
     try {
       await navigator.clipboard.writeText(url);
@@ -1278,6 +1428,21 @@ export default function App() {
     } catch {
       window.prompt("Copy customer share link:", url);
     }
+  }
+
+  function disableShipmentShareLink(shipmentId, linkId) {
+    let updatedSelected = null;
+    setShipments((previous) => previous.map((shipment) => {
+      if (shipment.id !== shipmentId) return shipment;
+      const link = getShipmentShareLinks(shipment).find((item) => item.id === linkId);
+      const updated = normalizeShipment(withTimeline({
+        ...shipment,
+        shareLinks: getShipmentShareLinks(shipment).map((item) => item.id === linkId ? { ...item, disabled: true, disabledAt: new Date().toISOString(), disabledBy: user?.email || "unknown" } : item),
+      }, createTimelineEvent("Share", "Customer share link disabled", link?.token || linkId)));
+      if (selectedShipment?.id === shipmentId) updatedSelected = updated;
+      return updated;
+    }));
+    if (updatedSelected) setSelectedShipment(updatedSelected);
   }
 
   function startEditShipment() {
@@ -1376,6 +1541,18 @@ export default function App() {
     }));
   }
 
+  async function uploadShipmentDocumentToStorage(shipmentId, file) {
+    if (!user?.id || !appSettings.storageBucket) return null;
+    const extension = file.name.includes(".") ? file.name.split(".").pop() : "file";
+    const path = `${user.id}/${shipmentId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`;
+    const { error } = await supabase.storage
+      .from(appSettings.storageBucket)
+      .upload(path, file, { contentType: file.type || "application/octet-stream", upsert: false });
+    if (error) throw error;
+    const { data } = supabase.storage.from(appSettings.storageBucket).getPublicUrl(path);
+    return { storageBucket: appSettings.storageBucket, storagePath: path, publicUrl: data?.publicUrl || "" };
+  }
+
   function saveShipmentDocument(shipmentId, file, documentType = "Other") {
     if (!file) return;
     if (file.size > 4 * 1024 * 1024) {
@@ -1384,7 +1561,18 @@ export default function App() {
     }
 
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
+      let storageData = null;
+      try {
+        storageData = await uploadShipmentDocumentToStorage(shipmentId, file);
+      } catch {
+        pushNotification({
+          type: "warning",
+          title: "Storage upload fallback",
+          message: `Supabase Storage was not available for ${file.name}. The file was saved inside shipment data.`,
+          shipmentId,
+        });
+      }
       const newDocument = {
         id: `DOC-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         name: file.name,
@@ -1393,6 +1581,8 @@ export default function App() {
         size: file.size,
         uploadedAt: new Date().toISOString(),
         dataUrl: reader.result,
+        customerCanDownload: false,
+        ...storageData,
       };
 
       let updatedSelected = null;
@@ -1408,6 +1598,22 @@ export default function App() {
       if (updatedSelected) setSelectedShipment(updatedSelected);
     };
     reader.readAsDataURL(file);
+  }
+
+  function toggleShipmentDocumentCustomerDownload(shipmentId, documentId) {
+    let updatedSelected = null;
+    setShipments((previous) => previous.map((shipment) => {
+      if (shipment.id !== shipmentId) return shipment;
+      const document = getShipmentDocuments(shipment).find((item) => item.id === documentId);
+      const enabled = !document?.customerCanDownload;
+      const updated = normalizeShipment(withTimeline({
+        ...shipment,
+        documents: getShipmentDocuments(shipment).map((item) => item.id === documentId ? { ...item, customerCanDownload: enabled } : item),
+      }, createTimelineEvent("Document", enabled ? "Document download enabled for customer" : "Document download disabled for customer", document?.name || documentId)));
+      if (selectedShipment?.id === shipmentId) updatedSelected = updated;
+      return updated;
+    }));
+    if (updatedSelected) setSelectedShipment(updatedSelected);
   }
 
   function deleteShipmentDocument(shipmentId, documentId) {
@@ -2143,6 +2349,10 @@ function importLocalBackup(event) {
     }
   }
 
+  if (publicShareStatus === "loading") {
+    return <PublicShareScreen share={{ error: "Loading customer share link..." }} />;
+  }
+
   if (publicShare) {
     return <PublicShareScreen share={publicShare} />;
   }
@@ -2177,6 +2387,7 @@ function importLocalBackup(event) {
           {canSeeFinance && <button className={tab === "exchange" ? "active" : ""} onClick={() => setTab("exchange")}>💱 Exchange Rate</button>}
           <button className={tab === "ports" ? "active" : ""} onClick={() => setTab("ports")}>⚓ Ports</button>
           <button className={tab === "reports" ? "active" : ""} onClick={() => setTab("reports")}>📊 Reports</button>
+          {role === "admin" && <button className={tab === "audit" ? "active" : ""} onClick={() => setTab("audit")}>▤ Audit Log</button>}
           {role === "admin" && <button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>⚙️ Settings</button>}
           <button className={tab === "api" ? "active" : ""} onClick={() => setTab("api")}>🛰 API Center</button>
         </nav>
@@ -2204,12 +2415,26 @@ function importLocalBackup(event) {
             <h1>{getTitle(tab)}</h1>
             <p>Container shipment management system</p>
           </div>
+          <div className="globalSearchBox">
+            <input value={globalSearch} onChange={(event) => setGlobalSearch(event.target.value)} placeholder="Search shipment, booking, customer, invoice, document..." />
+            {globalSearchResults.length > 0 && (
+              <div className="globalSearchResults">
+                {globalSearchResults.map((result, index) => (
+                  <button key={`${result.shipment.id}-${result.type}-${index}`} type="button" onClick={() => { openShipmentDetails(result.shipment); setGlobalSearch(""); }}>
+                    <b>{result.type}</b>
+                    <span>{result.label}</span>
+                    <small>{result.shipment.id} | {result.shipment.customer || "No customer"}</small>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           {canEditCore && <button onClick={() => setTab("booking")}>+ New Shipment</button>}
         </header>
 
         {tab === "dashboard" && <DashboardScreen totals={totals} taskDashboard={taskDashboard} canSeeFinance={canSeeFinance} notifications={notifications} clearNotifications={clearNotifications} markNotificationRead={markNotificationRead} actionCenter={actionCenter} financialDashboard={financialDashboard} cashPosition={cashPosition} monthlyFinancialDashboard={monthlyFinancialDashboard} financialMonth={financialMonth} setFinancialMonth={setFinancialMonth} dashboardCharts={dashboardCharts} shipments={shipments} activeFxRate={activeFxRate} openShipmentDetails={openShipmentDetails} />}
 
-        {tab === "details" && selectedShipment && <ShipmentDetailsScreen selectedShipment={selectedShipment} activeFxRate={activeFxRate} canSeeFinance={canSeeFinance} canEditOperation={canEditOperation} startEditShipment={startEditShipment} setTab={setTab} isEditing={isEditing} saveEditShipment={saveEditShipment} editForm={editForm} customers={customers} updateEdit={updateEdit} canEditCore={canEditCore} suppliers={suppliers} ports={ports} setIsEditing={setIsEditing} createAutoTasksForShipment={createAutoTasksForShipment} toggleTaskStatus={toggleTaskStatus} role={role} deleteTask={deleteTask} saveShipmentDocument={saveShipmentDocument} deleteShipmentDocument={deleteShipmentDocument} shareShipmentWithCustomer={shareShipmentWithCustomer} duplicateShipment={duplicateShipment} addInternalNoteToShipment={addInternalNoteToShipment} />}
+        {tab === "details" && selectedShipment && <ShipmentDetailsScreen selectedShipment={selectedShipment} activeFxRate={activeFxRate} canSeeFinance={canSeeFinance} canEditOperation={canEditOperation} startEditShipment={startEditShipment} setTab={setTab} isEditing={isEditing} saveEditShipment={saveEditShipment} editForm={editForm} customers={customers} updateEdit={updateEdit} canEditCore={canEditCore} suppliers={suppliers} ports={ports} setIsEditing={setIsEditing} createAutoTasksForShipment={createAutoTasksForShipment} toggleTaskStatus={toggleTaskStatus} role={role} deleteTask={deleteTask} saveShipmentDocument={saveShipmentDocument} deleteShipmentDocument={deleteShipmentDocument} toggleShipmentDocumentCustomerDownload={toggleShipmentDocumentCustomerDownload} shareShipmentWithCustomer={shareShipmentWithCustomer} disableShipmentShareLink={disableShipmentShareLink} duplicateShipment={duplicateShipment} addInternalNoteToShipment={addInternalNoteToShipment} />}
 
         {tab === "shipments" && <ShipmentsScreen resetShipmentFilters={resetShipmentFilters} query={query} setQuery={setQuery} shipmentFilters={shipmentFilters} customers={customers} updateShipmentFilter={updateShipmentFilter} suppliers={suppliers} setLineFilter={setLineFilter} ports={ports} canSeeFinance={canSeeFinance} role={role} filtered={filtered} openShipmentDetails={openShipmentDetails} activeFxRate={activeFxRate} deleteShipment={deleteShipment} bulkUpdateShipments={bulkUpdateShipments} />}
 
@@ -2235,7 +2460,9 @@ function importLocalBackup(event) {
 
         {tab === "ports" && <PortsScreen canEditCore={canEditCore} addPort={addPort} portForm={portForm} updatePort={updatePort} ports={ports} role={role} deletePort={deletePort} />}
 
-        {tab === "reports" && <ReportsScreen reportFromDate={reportFromDate} setReportFromDate={setReportFromDate} reportToDate={reportToDate} setReportToDate={setReportToDate} canSeeFinance={canSeeFinance} exportDetailedReportExcel={exportDetailedReportExcel} exportDetailedReportPdf={exportDetailedReportPdf} reportData={reportData} clientReportCustomer={clientReportCustomer} customers={customers} setClientReportCustomer={setClientReportCustomer} customerStatement={customerStatement} exportClientReportExcel={exportClientReportExcel} exportClientReportPdf={exportClientReportPdf} openShipmentDetails={openShipmentDetails} activeFxRate={activeFxRate} createBackup={createBackup} downloadLocalBackup={downloadLocalBackup} importLocalBackup={importLocalBackup} role={role} resetDemoData={resetDemoData} />}
+        {tab === "reports" && <ReportsScreen reportFromDate={reportFromDate} setReportFromDate={setReportFromDate} reportToDate={reportToDate} setReportToDate={setReportToDate} canSeeFinance={canSeeFinance} exportDetailedReportExcel={exportDetailedReportExcel} exportDetailedReportPdf={exportDetailedReportPdf} reportData={reportData} clientReportCustomer={clientReportCustomer} customers={customers} setClientReportCustomer={setClientReportCustomer} customerStatement={customerStatement} agingReport={agingReport} partnerStats={partnerStats} exportClientReportExcel={exportClientReportExcel} exportClientReportPdf={exportClientReportPdf} openShipmentDetails={openShipmentDetails} activeFxRate={activeFxRate} createBackup={createBackup} downloadLocalBackup={downloadLocalBackup} importLocalBackup={importLocalBackup} role={role} resetDemoData={resetDemoData} />}
+
+        {tab === "audit" && role === "admin" && <AuditLogScreen shipments={shipments} openShipmentDetails={openShipmentDetails} />}
 
         {tab === "settings" && role === "admin" && <SettingsScreen appSettings={appSettings} updateSettings={updateSettings} />}
 

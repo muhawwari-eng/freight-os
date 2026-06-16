@@ -1,4 +1,23 @@
 export function PublicShareScreen({ share }) {
+  if (share?.error) {
+    return (
+      <div className="publicShareShell">
+        <section className="publicShareHero">
+          <div>
+            <p>Freight OS Customer View</p>
+            <h1>Share Link Unavailable</h1>
+            <span className="badge">Disabled</span>
+          </div>
+        </section>
+        <section className="panel">
+          <h2>Link Status</h2>
+          <p>{share.error}</p>
+          <p>Please contact FSC Lojistik for a fresh link.</p>
+        </section>
+      </div>
+    );
+  }
+
   const showPaymentStatus = Boolean(share.paymentStatus);
   const showCustomerAmount = Number(share.customerAmount || 0) > 0;
 
@@ -41,6 +60,11 @@ export function PublicShareScreen({ share }) {
                   <b>{document.type || "Document"}</b>
                   <p>{document.name}</p>
                   <small>{document.uploadedAt ? new Date(document.uploadedAt).toLocaleString() : "Upload date not set"}</small>
+                  {document.customerCanDownload && document.downloadUrl ? (
+                    <a className="ghostBtn publicDownloadLink" href={document.downloadUrl} download={document.name} target="_blank" rel="noreferrer">Download</a>
+                  ) : (
+                    <small>Download not enabled for this file.</small>
+                  )}
                 </div>
               ))}
             </div>

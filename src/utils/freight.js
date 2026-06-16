@@ -30,6 +30,10 @@ export function getShipmentDocuments(shipment) {
   return Array.isArray(shipment.documents) ? shipment.documents : [];
 }
 
+export function getShipmentShareLinks(shipment) {
+  return Array.isArray(shipment.shareLinks) ? shipment.shareLinks : [];
+}
+
 export const requiredShipmentDocumentTypes = ["Bill of Lading", "Commercial Invoice", "Packing List"];
 
 export function getShipmentInternalNotes(shipment) {
@@ -473,6 +477,74 @@ export function getShipmentCalendarEvents(shipments) {
     .sort((left, right) => String(left.date).localeCompare(String(right.date)));
 }
 
+export function getShipmentAuditEvents(shipments) {
+  return (shipments || [])
+    .flatMap((shipment) => [
+      ...getTimelineEvents(shipment).map((event) => ({
+        ...event,
+        shipmentId: shipment.id,
+        shipmentCustomer: shipment.customer,
+        route: `${shipment.pol || ""} - ${shipment.pod || ""}`,
+      })),
+      ...getPayments(shipment).map((payment) => ({
+        id: `AUD-PAY-${shipment.id}-${payment.id}`,
+        type: "Payment",
+        title: `${payment.purchaseType || "Payment"} recorded`,
+        note: `${money(payment.amount, payment.currency || "USD")} | ${payment.company || "No company"}`,
+        date: payment.updatedAt || payment.createdAt || payment.paidDate || "",
+        user: payment.updatedBy || payment.createdBy || "unknown",
+        shipmentId: shipment.id,
+        shipmentCustomer: shipment.customer,
+        route: `${shipment.pol || ""} - ${shipment.pod || ""}`,
+      })),
+      ...getFinancialInvoices(shipment).map((invoice) => ({
+        id: `AUD-INV-${shipment.id}-${invoice.id}`,
+        type: "Invoice",
+        title: `${invoice.invoiceType || "Invoice"} ${invoice.invoiceNo || ""}`,
+        note: `${invoice.category || "No category"} | ${money(invoice.amount, invoice.currency || "USD")}`,
+        date: invoice.updatedAt || invoice.createdAt || invoice.invoiceDate || "",
+        user: invoice.updatedBy || invoice.createdBy || "unknown",
+        shipmentId: shipment.id,
+        shipmentCustomer: shipment.customer,
+        route: `${shipment.pol || ""} - ${shipment.pod || ""}`,
+      })),
+    ])
+    .filter((event) => event.date || event.title)
+    .sort((left, right) => String(right.date || "").localeCompare(String(left.date || "")));
+}
+
+export function getAgingBucket(daysOverdue) {
+  if (daysOverdue <= 30) return "0-30";
+  if (daysOverdue <= 60) return "31-60";
+  if (daysOverdue <= 90) return "61-90";
+  return "90+";
+}
+
+export function getAgingReport(shipments, exchangeRate) {
+  const empty = () => ({ "0-30": 0, "31-60": 0, "61-90": 0, "90+": 0, total: 0, rows: [] });
+  const report = { receivables: empty(), payables: empty() };
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  (shipments || []).forEach((shipment) => {
+    getShipmentFinancialLedger(shipment, exchangeRate).rows.forEach((row) => {
+      if (row.remainingUsd <= 0.01) return;
+      const dueDate = row.dueDate || row.invoiceDate || shipment.eta || shipment.entryDate || shipment.createdAt;
+      const due = new Date(dueDate);
+      if (Number.isNaN(due.getTime())) return;
+      due.setHours(0, 0, 0, 0);
+      const daysOverdue = Math.max(0, Math.floor((today - due) / (1000 * 60 * 60 * 24)));
+      const bucket = getAgingBucket(daysOverdue);
+      const target = row.invoiceType === "Sale" ? report.receivables : report.payables;
+      target[bucket] += row.remainingUsd;
+      target.total += row.remainingUsd;
+      target.rows.push({ shipment, invoice: row, dueDate: toDateKey(dueDate), daysOverdue, bucket, amountUsd: row.remainingUsd });
+    });
+  });
+
+  return report;
+}
+
 export function getRate(shipment, exchangeRate) {
   // Historical shipments keep their own saved FX rate. The active rate is a fallback only.
   return Number(shipment.fx || exchangeRate || 1) || 1;
@@ -632,6 +704,7 @@ export function normalizeShipment(shipment) {
     financialInvoices: getFinancialInvoices(shipment),
     financialInvoiceSequences: shipment.financialInvoiceSequences || { sale: 0, purchase: 0 },
     documents: getShipmentDocuments(shipment),
+    shareLinks: getShipmentShareLinks(shipment),
     internalNotes: getShipmentInternalNotes(shipment),
     timeline: Array.isArray(shipment.timeline) ? shipment.timeline : [],
     tasks: getTasks(shipment),

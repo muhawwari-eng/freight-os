@@ -726,6 +726,68 @@ button {
   color: #93c5fd;
 }
 
+.globalSearchBox {
+  position: relative;
+  min-width: min(420px, 100%);
+  flex: 1;
+  max-width: 520px;
+}
+
+.globalSearchBox input {
+  border-radius: 999px;
+}
+
+.globalSearchResults {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  background: rgba(15, 23, 42, 0.98);
+  border: 1px solid rgba(56, 189, 248, 0.24);
+  border-radius: 14px;
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.35);
+}
+
+.globalSearchResults button {
+  display: grid;
+  gap: 3px;
+  text-align: left;
+  color: #e5f3ff;
+  background: rgba(14, 39, 65, 0.72);
+  border: 1px solid rgba(56, 189, 248, 0.16);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.globalSearchResults small,
+.shareLinksList small {
+  color: #93c5fd;
+  overflow-wrap: anywhere;
+}
+
+.publicDownloadLink {
+  display: inline-flex;
+  margin-top: 10px;
+  text-decoration: none;
+}
+
+.agingGrid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.agingBox {
+  background: rgba(15, 23, 42, 0.62);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 12px;
+  padding: 14px;
+}
+
 .mt { margin-top: 16px; }
 
 .filters {
@@ -1338,6 +1400,10 @@ button:disabled {
   }
 
   .calendarEvent {
+    grid-template-columns: 1fr;
+  }
+
+  .agingGrid {
     grid-template-columns: 1fr;
   }
 }

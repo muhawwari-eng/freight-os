@@ -14,6 +14,7 @@ export function getTitle(tab) {
     exchange: "Exchange Rate",
     ports: "Ports",
     reports: "Reports",
+    audit: "Audit Log",
     settings: "Settings",
     api: "API Center",
     details: "Shipment Details",

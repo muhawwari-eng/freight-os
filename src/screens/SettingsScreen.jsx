@@ -36,10 +36,25 @@ export function SettingsScreen({ appSettings, updateSettings }) {
                   <option value="off">Disabled - use manual button only</option>
                 </select>
               </FormField>
+              <FormField label="Cut-Off Reminder Days Before">
+                <input type="number" min="0" value={appSettings.cutOffReminderDays} onChange={(e) => updateSettings("cutOffReminderDays", Number(e.target.value || 0))} />
+              </FormField>
+              <FormField label="ETD Reminder Days Before">
+                <input type="number" min="0" value={appSettings.etdReminderDays} onChange={(e) => updateSettings("etdReminderDays", Number(e.target.value || 0))} />
+              </FormField>
+              <FormField label="ETA Reminder Days Before">
+                <input type="number" min="0" value={appSettings.etaReminderDays} onChange={(e) => updateSettings("etaReminderDays", Number(e.target.value || 0))} />
+              </FormField>
+              <FormField label="Invoice Due Reminder Days Before">
+                <input type="number" min="0" value={appSettings.invoiceDueReminderDays} onChange={(e) => updateSettings("invoiceDueReminderDays", Number(e.target.value || 0))} />
+              </FormField>
+              <FormField label="Supabase Storage Bucket">
+                <input value={appSettings.storageBucket} onChange={(e) => updateSettings("storageBucket", e.target.value)} placeholder="shipment-documents" />
+              </FormField>
             </div>
             <div className="note mt">
               <h3>Reminder Rules</h3>
-              <p>Automatic reminders are sent once per day when an admin or operation user opens the app. The system sends Cut-Off, Departure / ETD, and Arrival / ETA reminders due tomorrow to the operation email and to the customer email if saved in Customers.</p>
+              <p>Automatic reminders are sent once per day when an admin or operation user opens the app. Each event uses the day offsets above, and shipment files use Supabase Storage when the bucket is available.</p>
             </div>
           </section>
 
