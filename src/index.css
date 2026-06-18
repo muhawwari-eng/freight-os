@@ -788,6 +788,80 @@ button {
   padding: 14px;
 }
 
+.operationalPage {
+  display: grid;
+  gap: 18px;
+}
+
+.opsMetrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.opsMetrics div,
+.opsFormPanel,
+.opsListPanel,
+.opsCard {
+  background: rgba(14, 39, 65, 0.66);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.opsMetrics small {
+  color: #93c5fd;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.opsMetrics b {
+  color: #38bdf8;
+  font-size: 24px;
+}
+
+.opsLayout {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.opsFormPanel {
+  position: sticky;
+  top: 16px;
+}
+
+.opsToolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, 260px);
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.opsCardGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.opsCard {
+  display: grid;
+  gap: 10px;
+}
+
+.opsCardHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.opsCardHead p,
+.opsCard p {
+  margin: 4px 0;
+}
+
 .mt { margin-top: 16px; }
 
 .filters {
@@ -1405,6 +1479,17 @@ button:disabled {
 
   .agingGrid {
     grid-template-columns: 1fr;
+  }
+
+  .opsMetrics,
+  .opsLayout,
+  .opsToolbar,
+  .opsCardGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .opsFormPanel {
+    position: static;
   }
 }
 

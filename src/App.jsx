@@ -2456,7 +2456,7 @@ function importLocalBackup(event) {
 
         {tab === "customers" && <CustomersScreen canEditCore={canEditCore} addCustomer={addCustomer} customerForm={customerForm} updateCustomer={updateCustomer} editingCustomerId={editingCustomerId} cancelEditCustomer={cancelEditCustomer} customers={customers} startEditCustomer={startEditCustomer} role={role} deleteCustomer={deleteCustomer} shipments={shipments} activeFxRate={activeFxRate} openShipmentDetails={openShipmentDetails} />}
 
-        {tab === "suppliers" && <SuppliersScreen canEditCore={canEditCore} addSupplier={addSupplier} supplierForm={supplierForm} updateSupplier={updateSupplier} suppliers={suppliers} role={role} deleteSupplier={deleteSupplier} />}
+        {tab === "suppliers" && <SuppliersScreen canEditCore={canEditCore} addSupplier={addSupplier} supplierForm={supplierForm} updateSupplier={updateSupplier} suppliers={suppliers} role={role} deleteSupplier={deleteSupplier} shipments={shipments} activeFxRate={activeFxRate} openShipmentDetails={openShipmentDetails} />}
 
         {tab === "ports" && <PortsScreen canEditCore={canEditCore} addPort={addPort} portForm={portForm} updatePort={updatePort} ports={ports} role={role} deletePort={deletePort} />}
 
