@@ -899,6 +899,7 @@ export default function App() {
         containerType: value === "FCL" ? prev.containerType || "40HC" : "",
         cbm: value === "Air" ? "" : prev.cbm,
         vessel: value === "Air" ? "" : prev.vessel,
+        volumetricWeightKg: value === "Air" ? prev.volumetricWeightKg : "",
       };
     });
   }

@@ -856,6 +856,90 @@ button {
   text-align: left;
 }
 
+.bookingWorkspace {
+  display: grid;
+  gap: 18px;
+}
+
+.shipmentModeGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.shipmentModeGrid button,
+.bookingTypeSwitch button {
+  background: rgba(14, 39, 65, 0.66);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  border-radius: 16px;
+  color: #dbeafe;
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  text-align: left;
+}
+
+.shipmentModeGrid button.active,
+.bookingTypeSwitch button.active {
+  background: rgba(14, 165, 233, 0.18);
+  border-color: rgba(125, 211, 252, 0.62);
+  color: #7dd3fc;
+}
+
+.shipmentModeGrid b {
+  color: #f8fafc;
+  font-size: 18px;
+}
+
+.shipmentModeGrid span {
+  color: #93c5fd;
+  line-height: 1.35;
+}
+
+.bookingTypeSwitch {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.bookingTypeSwitch button {
+  display: inline-flex;
+  padding: 11px 14px;
+}
+
+.bookingFlow {
+  display: grid;
+  gap: 16px;
+}
+
+.bookingSection {
+  background: rgba(14, 39, 65, 0.66);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.bookingSection h3 {
+  margin: 0 0 14px;
+  color: #f8fafc;
+}
+
+.bookingSubmitBar {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.76);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  border-radius: 16px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+}
+
+.bookingSubmitBar p {
+  color: #93c5fd;
+  margin: 4px 0 0;
+}
+
 .opsCardGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1501,12 +1585,18 @@ button:disabled {
   .opsMetrics,
   .opsLayout,
   .opsToolbar,
-  .opsCardGrid {
+  .opsCardGrid,
+  .shipmentModeGrid {
     grid-template-columns: 1fr;
   }
 
   .opsFormPanel {
     position: static;
+  }
+
+  .bookingSubmitBar {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 
