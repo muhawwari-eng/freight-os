@@ -6,7 +6,7 @@ import Login from "./Login";
 import { supabase } from "./supabase";
 import { DEFAULT_OPERATION_EMAIL, EMAILJS_PUBLIC_KEY, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, REMINDER_EMAIL_ENDPOINT } from "./config/email";
 import { defaultFxSettings, defaultShipments, defaultSuppliers, defaultWorldPorts, emptyBookingForm, emptyCustomerForm, emptyEditForm, emptyExpenseForm, emptyPaymentForm, emptyPortForm, emptyReceivableForm, emptySupplierForm, emptyTaskForm, emptyTransportForm, getLocalTodayDateKey, getNextCustomerId, getNextSupplierId } from "./data/defaults";
-import { addDays, buildReminderMessage, calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanSell, calcTotalCostUsd, dedupeShipments, getAgingReport, getCurrentMonthKey, getDateRangeLabel, getDaysLeft, getExpenses, getFinancialInvoices, getInvoicePaymentType, getMonthKey, getNextFinancialInvoiceNumber, getNextShipmentId, getPaymentSummary, getPayments, getRate, getReminderEventsForShipment, getReminderSentKey, getShipmentBillableQty, getShipmentDocuments, getShipmentFinancialLedger, getShipmentInternalNotes, getShipmentLoadDescription, getShipmentReportDate, getShipmentShareLinks, getShipmentUnitLabel, getTaskStatus, getTasks, getTransports, isAirShipment, isDateInRange, isFclShipment, isReminderAlreadySent, money, normalizeShipment, paymentAmountUsd, safeFileName, toDateKey } from "./utils/freight";
+import { addDays, buildReminderMessage, calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanSell, calcTotalCostUsd, dedupeShipments, getAgingReport, getCurrentMonthKey, getDateRangeLabel, getDaysLeft, getExpenses, getFinancialInvoices, getInvoicePaymentType, getMonthKey, getNextFinancialInvoiceNumber, getNextShipmentId, getPaymentSummary, getPayments, getRate, getReminderEventsForShipment, getReminderSentKey, getShipmentBillableQty, getShipmentDocuments, getShipmentFinancialLedger, getShipmentInternalNotes, getShipmentLoadDescription, getShipmentReportDate, getShipmentShareLinks, getShipmentUnitLabel, getTaskStatus, getTasks, getTransports, isAirShipment, isDateInRange, isFclShipment, isFullTruckShipment, isReminderAlreadySent, money, normalizeShipment, paymentAmountUsd, safeFileName, toDateKey } from "./utils/freight";
 import { ownedTables, readOwnedRows, saveOwnedRows } from "./services/ownedStorage";
 import { getTitle } from "./utils/titles";
 import { DashboardScreen } from "./screens/DashboardScreen";
@@ -895,9 +895,9 @@ export default function App() {
       return {
         ...prev,
         cargoType: value,
-        qty: value === "FCL" ? prev.qty : "",
-        containerType: value === "FCL" ? prev.containerType || "40HC" : "",
-        cbm: value === "Air" ? "" : prev.cbm,
+        qty: ["FCL", "CrossFCL", "RoadFull"].includes(value) ? prev.qty : "",
+        containerType: ["FCL", "CrossFCL"].includes(value) ? prev.containerType || "40HC" : "",
+        cbm: ["Air", "FCL", "CrossFCL", "RoadFull"].includes(value) ? "" : prev.cbm,
         vessel: value === "Air" ? "" : prev.vessel,
         volumetricWeightKg: value === "Air" ? prev.volumetricWeightKg : "",
       };
@@ -1252,6 +1252,18 @@ export default function App() {
   }
 
   function updateEdit(field, value) {
+    if (field === "cargoType") {
+      setEditForm((prev) => ({
+        ...prev,
+        cargoType: value,
+        qty: ["FCL", "CrossFCL", "RoadFull"].includes(value) ? prev.qty : "",
+        containerType: ["FCL", "CrossFCL"].includes(value) ? prev.containerType || "40HC" : "",
+        cbm: ["Air", "FCL", "CrossFCL", "RoadFull"].includes(value) ? "" : prev.cbm,
+        vessel: value === "Air" ? "" : prev.vessel,
+        volumetricWeightKg: value === "Air" ? prev.volumetricWeightKg : "",
+      }));
+      return;
+    }
     setEditForm((prev) => ({ ...prev, [field]: value }));
   }
 
@@ -1638,21 +1650,24 @@ function saveEditShipment(e) {
   if (!selectedShipment?.id) return;
   const draftShipment = { ...editForm };
   const billableQty = getShipmentBillableQty(draftShipment);
+  const isFcl = isFclShipment(draftShipment);
+  const isAir = isAirShipment(draftShipment);
+  const isFullTruck = isFullTruckShipment(draftShipment);
 
   const updatedShipment = normalizeShipment(withTimeline({
     ...selectedShipment,
     ...editForm,
     id: selectedShipment.id, // Never change shipment ID during editing.
-    containerType: isFclShipment(draftShipment) ? editForm.containerType || selectedShipment.containerType || "40HC" : "",
-    qty: isFclShipment(draftShipment) ? Number(editForm.qty || 0) : billableQty,
-    cbm: isAirShipment(draftShipment) ? "" : editForm.cbm,
+    containerType: isFcl ? editForm.containerType || selectedShipment.containerType || "40HC" : "",
+    qty: (isFcl || isFullTruck) ? Number(editForm.qty || 0) : billableQty,
+    cbm: (isAir || isFcl || isFullTruck) ? "" : editForm.cbm,
     actualWeightKg: editForm.actualWeightKg,
     volumetricWeightKg: editForm.volumetricWeightKg,
     packageCount: editForm.packageCount,
     buyUsd: Number(editForm.buyUsd || 0),
     sellUsd: Number(editForm.sellUsd || 0),
     bookingNo: editForm.bookingNo || "Not set",
-    vessel: isAirShipment(draftShipment) ? "Not set" : editForm.vessel || "Not set",
+    vessel: isAir ? "Not set" : editForm.vessel || "Not set",
     updatedAt: new Date().toISOString(),
   }, createTimelineEvent("Shipment", "Shipment updated", `Status: ${selectedShipment.status || "Not set"} -> ${editForm.status || "Not set"}`)));
 
@@ -1667,12 +1682,13 @@ function addShipmentFromForm(e) {
     e.preventDefault();
     const isFcl = isFclShipment(bookingForm);
     const isAir = isAirShipment(bookingForm);
+    const isFullTruck = isFullTruckShipment(bookingForm);
     const billableQty = getShipmentBillableQty(bookingForm);
     if (!bookingForm.customer || !bookingForm.line || !bookingForm.pol || !bookingForm.pod || !bookingForm.buyUsd || !bookingForm.sellUsd) {
       alert("Please fill customer, line, route, buy price, and sell price.");
       return;
     }
-    if (!billableQty || (isFcl && !bookingForm.qty) || (!isFcl && !isAir && !bookingForm.cbm) || (isAir && !billableQty)) {
+    if (!billableQty || ((isFcl || isFullTruck) && !bookingForm.qty) || (!isFcl && !isFullTruck && !isAir && !bookingForm.cbm) || (isAir && !billableQty)) {
       alert(`Please fill a valid ${getShipmentUnitLabel(bookingForm)} quantity for this shipment.`);
       return;
     }
@@ -1687,8 +1703,8 @@ function addShipmentFromForm(e) {
       pod: bookingForm.pod,
       containerType: isFcl ? bookingForm.containerType : "",
       cargoType: bookingForm.cargoType,
-      qty: isFcl ? Number(bookingForm.qty) : billableQty,
-      cbm: isAir ? "" : bookingForm.cbm,
+      qty: (isFcl || isFullTruck) ? Number(bookingForm.qty) : billableQty,
+      cbm: (isAir || isFcl || isFullTruck) ? "" : bookingForm.cbm,
       actualWeightKg: bookingForm.actualWeightKg,
       volumetricWeightKg: bookingForm.volumetricWeightKg,
       packageCount: bookingForm.packageCount,

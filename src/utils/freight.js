@@ -172,11 +172,15 @@ export function isReminderAlreadySent(sent, event) {
 }
 
 export function isFclShipment(shipment) {
-  return (shipment?.cargoType || "FCL") === "FCL";
+  return ["FCL", "CrossFCL"].includes(shipment?.cargoType || "FCL");
 }
 
 export function isAirShipment(shipment) {
   return (shipment?.cargoType || "FCL") === "Air";
+}
+
+export function isFullTruckShipment(shipment) {
+  return (shipment?.cargoType || "FCL") === "RoadFull";
 }
 
 export function getChargeableWeightKg(shipment) {
@@ -185,18 +189,21 @@ export function getChargeableWeightKg(shipment) {
 
 export function getShipmentBillableQty(shipment) {
   if (isFclShipment(shipment)) return Number(shipment?.qty || 0);
+  if (isFullTruckShipment(shipment)) return Number(shipment?.qty || 0);
   if (isAirShipment(shipment)) return getChargeableWeightKg(shipment);
   return Number(shipment?.cbm || shipment?.qty || 0);
 }
 
 export function getShipmentUnitLabel(shipment) {
   if (isFclShipment(shipment)) return "Container";
+  if (isFullTruckShipment(shipment)) return "Truck";
   if (isAirShipment(shipment)) return "Chargeable KG";
   return "CBM";
 }
 
 export function getShipmentLoadDescription(shipment) {
   if (isFclShipment(shipment)) return `${Number(shipment?.qty || 0)} x ${shipment?.containerType || "Container"}`;
+  if (isFullTruckShipment(shipment)) return `${Number(shipment?.qty || 0)} full truck(s)`;
   const pieces = Number(shipment?.packageCount || 0) ? `${Number(shipment.packageCount)} pkg` : "Packages not set";
   const cbm = Number(shipment?.cbm || 0) ? `${Number(shipment.cbm)} CBM` : "CBM not set";
   const actual = Number(shipment?.actualWeightKg || 0) ? `${Number(shipment.actualWeightKg)} KG actual` : "Actual KG not set";

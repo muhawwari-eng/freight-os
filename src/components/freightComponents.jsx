@@ -42,7 +42,9 @@ export function CargoSelect({ value, onChange }) {
       <option value="FCL">FCL - Full Container Load</option>
       <option value="LCL">LCL Sea - Partial / CBM</option>
       <option value="Air">Air Freight - Partial / KG</option>
+      <option value="RoadFull">Road Full Truck</option>
       <option value="Road">Road Partial - CBM</option>
+      <option value="CrossFCL">Cross Trade - FCL</option>
       <option value="Cross">Cross Trade - CBM</option>
     </select>
   );

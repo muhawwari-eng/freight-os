@@ -1,17 +1,17 @@
 import { ContainerSelect, CustomerSelect, FormField, PaymentSelect, PortSelect, StatusSelect, SupplierSelect } from "../components/freightComponents";
-import { getShipmentUnitLabel, isAirShipment, isFclShipment } from "../utils/freight";
+import { getShipmentUnitLabel, isAirShipment, isFclShipment, isFullTruckShipment } from "../utils/freight";
 
 const shipmentModes = [
   { key: "Sea", title: "Sea", description: "FCL containers or LCL sea cargo", cargoType: "FCL" },
-  { key: "Road", title: "Road", description: "Partial road freight by CBM", cargoType: "Road" },
+  { key: "Road", title: "Road", description: "Full truck or partial road freight", cargoType: "Road" },
   { key: "Air", title: "Air", description: "Chargeable weight by actual or volumetric KG", cargoType: "Air" },
   { key: "Cross", title: "Cross", description: "Cross trade / cross operation file", cargoType: "Cross" },
 ];
 
 function getModeFromCargo(cargoType) {
   if (cargoType === "Air") return "Air";
-  if (cargoType === "Road") return "Road";
-  if (cargoType === "Cross") return "Cross";
+  if (["Road", "RoadFull"].includes(cargoType)) return "Road";
+  if (["Cross", "CrossFCL"].includes(cargoType)) return "Cross";
   return "Sea";
 }
 
@@ -28,6 +28,7 @@ export function BookingScreen({ addShipmentFromForm, bookingForm, customers, upd
   const mode = getModeFromCargo(bookingForm.cargoType);
   const isFcl = isFclShipment(bookingForm);
   const isAir = isAirShipment(bookingForm);
+  const isFullTruck = isFullTruckShipment(bookingForm);
   const isSea = mode === "Sea";
   const isRoad = mode === "Road";
   const isCross = mode === "Cross";
@@ -63,6 +64,20 @@ export function BookingScreen({ addShipmentFromForm, bookingForm, customers, upd
         </div>
       )}
 
+      {isRoad && (
+        <div className="bookingTypeSwitch">
+          <button type="button" className={bookingForm.cargoType === "RoadFull" ? "active" : ""} onClick={() => updateBooking("cargoType", "RoadFull")}>Full Truck</button>
+          <button type="button" className={bookingForm.cargoType === "Road" ? "active" : ""} onClick={() => updateBooking("cargoType", "Road")}>Partial Road / CBM</button>
+        </div>
+      )}
+
+      {isCross && (
+        <div className="bookingTypeSwitch">
+          <button type="button" className={bookingForm.cargoType === "CrossFCL" ? "active" : ""} onClick={() => updateBooking("cargoType", "CrossFCL")}>Cross FCL</button>
+          <button type="button" className={bookingForm.cargoType === "Cross" ? "active" : ""} onClick={() => updateBooking("cargoType", "Cross")}>Cross Partial / CBM</button>
+        </div>
+      )}
+
       <form onSubmit={addShipmentFromForm} className="bookingFlow">
         <BookingSection title="File & Parties">
           <FormField label="Entry Date"><input type="date" value={bookingForm.entryDate} onChange={(e) => updateBooking("entryDate", e.target.value)} required /></FormField>
@@ -79,12 +94,13 @@ export function BookingScreen({ addShipmentFromForm, bookingForm, customers, upd
         </BookingSection>
 
         <BookingSection title="Cargo Details">
-          <FormField label="Shipment Type"><input value={bookingForm.cargoType === "LCL" ? "Sea LCL" : bookingForm.cargoType} disabled /></FormField>
+          <FormField label="Shipment Type"><input value={bookingForm.cargoType === "LCL" ? "Sea LCL" : bookingForm.cargoType === "RoadFull" ? "Road Full Truck" : bookingForm.cargoType === "CrossFCL" ? "Cross FCL" : bookingForm.cargoType} disabled /></FormField>
           {isFcl && <FormField label="Container Type"><ContainerSelect value={bookingForm.containerType} onChange={(value) => updateBooking("containerType", value)} /></FormField>}
           {isFcl && <FormField label="Container Quantity"><input type="number" min="0" step="1" value={bookingForm.qty} onChange={(e) => updateBooking("qty", e.target.value)} /></FormField>}
-          {!isFcl && <FormField label="Package Count"><input type="number" min="0" step="1" value={bookingForm.packageCount} onChange={(e) => updateBooking("packageCount", e.target.value)} /></FormField>}
-          {!isFcl && !isAir && <FormField label="CBM"><input type="number" min="0" step="0.001" value={bookingForm.cbm} onChange={(e) => updateBooking("cbm", e.target.value)} required /></FormField>}
-          {!isFcl && <FormField label="Actual Weight KG"><input type="number" min="0" step="0.01" value={bookingForm.actualWeightKg} onChange={(e) => updateBooking("actualWeightKg", e.target.value)} /></FormField>}
+          {isFullTruck && <FormField label="Truck Quantity"><input type="number" min="0" step="1" value={bookingForm.qty} onChange={(e) => updateBooking("qty", e.target.value)} /></FormField>}
+          {!isFcl && !isFullTruck && <FormField label="Package Count"><input type="number" min="0" step="1" value={bookingForm.packageCount} onChange={(e) => updateBooking("packageCount", e.target.value)} /></FormField>}
+          {!isFcl && !isFullTruck && !isAir && <FormField label="CBM"><input type="number" min="0" step="0.001" value={bookingForm.cbm} onChange={(e) => updateBooking("cbm", e.target.value)} required /></FormField>}
+          {!isFcl && !isFullTruck && <FormField label="Actual Weight KG"><input type="number" min="0" step="0.01" value={bookingForm.actualWeightKg} onChange={(e) => updateBooking("actualWeightKg", e.target.value)} /></FormField>}
           {isAir && <FormField label="Volumetric Weight KG"><input type="number" min="0" step="0.01" value={bookingForm.volumetricWeightKg} onChange={(e) => updateBooking("volumetricWeightKg", e.target.value)} /></FormField>}
         </BookingSection>
 
@@ -106,7 +122,7 @@ export function BookingScreen({ addShipmentFromForm, bookingForm, customers, upd
         <div className="bookingSubmitBar">
           <div>
             <b>{mode} booking</b>
-            <p>{bookingForm.cargoType === "FCL" ? "Containers are billed per container." : isAir ? "Air freight is billed by chargeable KG." : "This shipment is billed by CBM."}</p>
+            <p>{isFcl ? "Full container files are billed per container." : isFullTruck ? "Full road files are billed per truck." : isAir ? "Air freight is billed by chargeable KG." : "Partial files are billed by CBM."}</p>
           </div>
           <button className="saveBtn" type="submit">Save Booking</button>
         </div>
