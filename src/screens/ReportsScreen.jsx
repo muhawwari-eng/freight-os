@@ -1,7 +1,7 @@
-import { Card, CustomerSelect, FormField } from "../components/freightComponents";
+import { Card, CustomerSelect, FormField, SupplierSelect } from "../components/freightComponents";
 import { calcNetProfit, calcOceanSell, calcTotalCostUsd, getDateRangeLabel, getShipmentReportDate, money } from "../utils/freight";
 
-export function ReportsScreen({ reportFromDate, setReportFromDate, reportToDate, setReportToDate, canSeeFinance, exportDetailedReportExcel, exportDetailedReportPdf, reportData, clientReportCustomer, customers, setClientReportCustomer, customerStatement, agingReport, partnerStats, exportClientReportExcel, exportClientReportPdf, openShipmentDetails, activeFxRate, createBackup, downloadLocalBackup, importLocalBackup, role, resetDemoData }) {
+export function ReportsScreen({ reportFromDate, setReportFromDate, reportToDate, setReportToDate, canSeeFinance, exportDetailedReportExcel, exportDetailedReportPdf, reportData, clientReportCustomer, customers, setClientReportCustomer, customerStatement, supplierReportSupplier, suppliers, setSupplierReportSupplier, supplierStatement, agingReport, partnerStats, exportClientReportExcel, exportClientReportPdf, exportSupplierReportExcel, exportSupplierReportPdf, openShipmentDetails, activeFxRate, createBackup, downloadLocalBackup, importLocalBackup, role, resetDemoData }) {
   return (
     <section className="panel">
       <div className="panelHead">
@@ -129,7 +129,118 @@ export function ReportsScreen({ reportFromDate, setReportFromDate, reportToDate,
             </tbody>
           </table>
         </div>
+        <h3 className="mt">Customer Payment Details</h3>
+        <div className="tableWrap mt">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Shipment</th>
+                <th>Customer</th>
+                <th>Amount</th>
+                <th>USD Value</th>
+                <th>Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {customerStatement.payments.map(({ shipment, payment, amountUsd }) => (
+                <tr key={payment.id} onClick={() => openShipmentDetails(shipment)}>
+                  <td>{payment.paidDate || "Not set"}</td>
+                  <td>{shipment.id}</td>
+                  <td>{shipment.customer || "Not set"}</td>
+                  <td>{money(Number(payment.amount || 0), payment.currency || "USD")}</td>
+                  <td><b>{money(amountUsd)}</b></td>
+                  <td>{payment.note || "-"}</td>
+                </tr>
+              ))}
+              {customerStatement.payments.length === 0 && <tr><td colSpan="6">No customer payments found for this customer and date range.</td></tr>}
+            </tbody>
+          </table>
+        </div>
       </div>
+
+      {canSeeFinance && (
+        <div className="note mt">
+          <div className="panelHead">
+            <div>
+              <h3>Supplier Statement</h3>
+              <p className="smallText">Supplier-facing payable report with purchase invoices, payments made, and remaining balance owed.</p>
+            </div>
+            <div className="actions">
+              <FormField label="Supplier">
+                <SupplierSelect value={supplierReportSupplier} suppliers={[{ id: "all", name: "all" }, ...suppliers]} onChange={setSupplierReportSupplier} />
+              </FormField>
+              <button className="saveBtn" onClick={exportSupplierReportExcel}>Export Supplier Excel</button>
+              <button className="ghostBtn" onClick={exportSupplierReportPdf}>Export Supplier PDF</button>
+            </div>
+          </div>
+          <section className="stats compactStats">
+            <Card icon="#" title="Supplier Shipments" value={supplierStatement.shipments} />
+            <Card icon="$" title="Purchase Total" value={money(supplierStatement.invoiceUsd)} />
+            <Card icon="$" title="Paid" value={money(supplierStatement.paidUsd)} />
+            <Card icon="$" title="Remaining Payable" value={money(supplierStatement.remainingUsd)} />
+          </section>
+          <div className="tableWrap mt">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Supplier</th>
+                  <th>Shipment</th>
+                  <th>Category</th>
+                  <th>Invoice</th>
+                  <th>Paid</th>
+                  <th>Remaining</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {supplierStatement.rows.map(({ shipment, invoice, supplier, invoiceUsd, paidUsd, remainingUsd, status }) => (
+                  <tr key={`${shipment.id}-${invoice.id}`} onClick={() => openShipmentDetails(shipment)}>
+                    <td>{invoice.invoiceDate || getShipmentReportDate(shipment) || "Not set"}</td>
+                    <td>{supplier}</td>
+                    <td>{shipment.id}</td>
+                    <td>{invoice.category || "Purchase"}</td>
+                    <td>{money(invoiceUsd)}</td>
+                    <td>{money(paidUsd)}</td>
+                    <td><b>{money(remainingUsd)}</b></td>
+                    <td><span className="badge">{status}</span></td>
+                  </tr>
+                ))}
+                {supplierStatement.rows.length === 0 && <tr><td colSpan="8">No supplier movement found for this supplier and date range.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <h3 className="mt">Supplier Payment Details</h3>
+          <div className="tableWrap mt">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Supplier</th>
+                  <th>Shipment</th>
+                  <th>Type</th>
+                  <th>Amount</th>
+                  <th>USD Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {supplierStatement.payments.map(({ shipment, supplier, payment, amountUsd }) => (
+                  <tr key={`${shipment.id}-${supplier}-${payment.id}`} onClick={() => openShipmentDetails(shipment)}>
+                    <td>{payment.paidDate || "Not set"}</td>
+                    <td>{supplier}</td>
+                    <td>{shipment.id}</td>
+                    <td>{payment.purchaseType || "Payment"}</td>
+                    <td>{money(Number(payment.amount || 0), payment.currency || "USD")}</td>
+                    <td><b>{money(amountUsd)}</b></td>
+                  </tr>
+                ))}
+                {supplierStatement.payments.length === 0 && <tr><td colSpan="6">No supplier payments found for this supplier and date range.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div className="tableWrap mt">
         <table>

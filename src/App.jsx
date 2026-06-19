@@ -92,6 +92,7 @@ export default function App() {
   const [reportFromDate, setReportFromDate] = useState("");
   const [reportToDate, setReportToDate] = useState("");
   const [clientReportCustomer, setClientReportCustomer] = useState("all");
+  const [supplierReportSupplier, setSupplierReportSupplier] = useState("all");
   const [financialMonth, setFinancialMonth] = useState(getCurrentMonthKey());
   const defaultAppSettings = {
     operationEmail: DEFAULT_OPERATION_EMAIL,
@@ -775,6 +776,7 @@ export default function App() {
     const selectedShipments = reportData.shipments.filter((shipment) => clientReportCustomer === "all" || shipment.customer === clientReportCustomer);
     const rows = selectedShipments.map((shipment) => {
       const ledger = getShipmentFinancialLedger(shipment, activeFxRate);
+      const payments = getPayments(shipment).filter((payment) => payment.purchaseType === "Customer Receipt");
       return {
         shipment,
         invoiceUsd: ledger.salesTotal,
@@ -782,21 +784,79 @@ export default function App() {
         remainingUsd: ledger.salesRemaining,
         status: ledger.salesRemaining <= 0.01 ? "Paid" : ledger.salesPaid > 0 ? "Partially Paid" : "Unpaid",
         invoices: ledger.saleRows,
-        payments: getPayments(shipment).filter((payment) => payment.purchaseType === "Customer Receipt"),
+        payments,
       };
     });
     return rows.reduce(
       (acc, row) => {
         acc.rows.push(row);
+        row.invoices.forEach((invoice) => acc.invoices.push({ shipment: row.shipment, invoice }));
+        row.payments.forEach((payment) => acc.payments.push({ shipment: row.shipment, payment, amountUsd: paymentAmountUsd(payment, row.shipment, activeFxRate) }));
         acc.shipments += 1;
         acc.invoiceUsd += row.invoiceUsd;
         acc.collectedUsd += row.collectedUsd;
         acc.remainingUsd += row.remainingUsd;
         return acc;
       },
-      { rows: [], shipments: 0, invoiceUsd: 0, collectedUsd: 0, remainingUsd: 0 }
+      { rows: [], invoices: [], payments: [], shipments: 0, invoiceUsd: 0, collectedUsd: 0, remainingUsd: 0 }
     );
   }, [reportData.shipments, clientReportCustomer, activeFxRate]);
+
+  const supplierStatement = useMemo(() => {
+    const matchesSupplier = (shipment, row) => {
+      if (supplierReportSupplier === "all") return true;
+      return [row.party, shipment.line, row.category].some((value) => String(value || "").toLowerCase() === supplierReportSupplier.toLowerCase());
+    };
+
+    const rows = [];
+    reportData.shipments.forEach((shipment) => {
+      const ledger = getShipmentFinancialLedger(shipment, activeFxRate);
+      ledger.purchaseRows
+        .filter((row) => matchesSupplier(shipment, row))
+        .forEach((invoice) => {
+          rows.push({
+            shipment,
+            invoice,
+            supplier: invoice.party || shipment.line || invoice.category || "Unknown Supplier",
+            invoiceUsd: invoice.totalUsd,
+            paidUsd: invoice.paidUsd,
+            remainingUsd: invoice.remainingUsd,
+            status: invoice.status,
+            payments: invoice.payments,
+          });
+        });
+    });
+
+    const suppliersMap = new Map();
+    rows.forEach((row) => {
+      const key = row.supplier || "Unknown Supplier";
+      const supplier = suppliersMap.get(key) || { name: key, invoices: 0, shipments: new Set(), invoiceUsd: 0, paidUsd: 0, remainingUsd: 0 };
+      supplier.invoices += 1;
+      supplier.shipments.add(row.shipment.id);
+      supplier.invoiceUsd += row.invoiceUsd;
+      supplier.paidUsd += row.paidUsd;
+      supplier.remainingUsd += row.remainingUsd;
+      suppliersMap.set(key, supplier);
+    });
+
+    const payments = rows.flatMap((row) => row.payments.map((payment) => ({
+      shipment: row.shipment,
+      invoice: row.invoice,
+      supplier: row.supplier,
+      payment,
+      amountUsd: paymentAmountUsd(payment, row.shipment, activeFxRate),
+    })));
+
+    return {
+      rows,
+      suppliers: Array.from(suppliersMap.values()).map((row) => ({ ...row, shipments: row.shipments.size })).sort((a, b) => b.remainingUsd - a.remainingUsd),
+      payments,
+      shipments: new Set(rows.map((row) => row.shipment.id)).size,
+      invoiceUsd: rows.reduce((sum, row) => sum + row.invoiceUsd, 0),
+      paidUsd: rows.reduce((sum, row) => sum + row.paidUsd, 0),
+      remainingUsd: rows.reduce((sum, row) => sum + row.remainingUsd, 0),
+    };
+  }, [reportData.shipments, supplierReportSupplier, activeFxRate]);
 
   const agingReport = useMemo(() => getAgingReport(reportData.shipments, activeFxRate), [reportData.shipments, activeFxRate]);
 
@@ -844,9 +904,32 @@ export default function App() {
       { Metric: "Collected USD", Value: Number(customerStatement.collectedUsd.toFixed(2)) },
       { Metric: "Remaining USD", Value: Number(customerStatement.remainingUsd.toFixed(2)) },
     ];
+    const invoiceRows = customerStatement.invoices.map(({ shipment, invoice }) => ({
+      Date: invoice.invoiceDate || getShipmentReportDate(shipment) || "",
+      "Shipment ID": shipment.id,
+      Customer: shipment.customer || "",
+      "Invoice No": invoice.invoiceNo || "",
+      Category: invoice.category || "",
+      "Invoice Total USD": Number(invoice.totalUsd.toFixed(2)),
+      "Paid USD": Number(invoice.paidUsd.toFixed(2)),
+      "Remaining USD": Number(invoice.remainingUsd.toFixed(2)),
+      Status: invoice.status,
+    }));
+    const paymentRows = customerStatement.payments.map(({ shipment, payment, amountUsd }) => ({
+      Date: payment.paidDate || "",
+      "Shipment ID": shipment.id,
+      Customer: shipment.customer || "",
+      "Payment Type": payment.purchaseType || "",
+      "Payment Amount": Number(payment.amount || 0),
+      Currency: payment.currency || "USD",
+      "Amount USD": Number(amountUsd.toFixed(2)),
+      Note: payment.note || "",
+    }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), "Summary");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Client Shipments");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(invoiceRows), "Invoices");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(paymentRows), "Payments");
     const safeName = safeFileName(customerName);
     XLSX.writeFile(wb, `freight-os-client-report-${safeName}-${safeFileName(getDateRangeLabel(reportFromDate, reportToDate))}.xlsx`);
   }
@@ -885,8 +968,124 @@ export default function App() {
       styles: { fontSize: 7 },
       headStyles: { fontSize: 7 },
     });
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 8,
+      head: [["Date", "Shipment", "Payment Type", "Amount", "USD Value", "Note"]],
+      body: customerStatement.payments.map(({ shipment, payment, amountUsd }) => [
+        payment.paidDate || "",
+        shipment.id,
+        payment.purchaseType || "",
+        money(Number(payment.amount || 0), payment.currency || "USD"),
+        money(amountUsd),
+        payment.note || "",
+      ]),
+      styles: { fontSize: 7 },
+      headStyles: { fontSize: 7 },
+    });
     const safeName = safeFileName(customerName);
     doc.save(`freight-os-client-report-${safeName}-${safeFileName(getDateRangeLabel(reportFromDate, reportToDate))}.pdf`);
+  }
+
+  function exportSupplierReportExcel() {
+    if (!supplierStatement.rows.length) {
+      alert("No supplier movement found for the selected date range.");
+      return;
+    }
+    const supplierName = supplierReportSupplier === "all" ? "All Suppliers" : supplierReportSupplier;
+    const summary = [
+      { Metric: "Supplier", Value: supplierName },
+      { Metric: "Date Range", Value: getDateRangeLabel(reportFromDate, reportToDate) },
+      { Metric: "Shipments", Value: supplierStatement.shipments },
+      { Metric: "Invoice Total USD", Value: Number(supplierStatement.invoiceUsd.toFixed(2)) },
+      { Metric: "Paid USD", Value: Number(supplierStatement.paidUsd.toFixed(2)) },
+      { Metric: "Remaining USD", Value: Number(supplierStatement.remainingUsd.toFixed(2)) },
+    ];
+    const supplierRows = supplierStatement.suppliers.map((row) => ({
+      Supplier: row.name,
+      Shipments: row.shipments,
+      Invoices: row.invoices,
+      "Invoice Total USD": Number(row.invoiceUsd.toFixed(2)),
+      "Paid USD": Number(row.paidUsd.toFixed(2)),
+      "Remaining USD": Number(row.remainingUsd.toFixed(2)),
+    }));
+    const invoiceRows = supplierStatement.rows.map(({ shipment, invoice, supplier, invoiceUsd, paidUsd, remainingUsd, status }) => ({
+      Date: invoice.invoiceDate || getShipmentReportDate(shipment) || "",
+      Supplier: supplier,
+      "Shipment ID": shipment.id,
+      Route: `${shipment.pol || ""} -> ${shipment.pod || ""}`,
+      "Invoice No": invoice.invoiceNo || "",
+      Category: invoice.category || "",
+      "Invoice Total USD": Number(invoiceUsd.toFixed(2)),
+      "Paid USD": Number(paidUsd.toFixed(2)),
+      "Remaining USD": Number(remainingUsd.toFixed(2)),
+      Status: status,
+    }));
+    const paymentRows = supplierStatement.payments.map(({ shipment, invoice, supplier, payment, amountUsd }) => ({
+      Date: payment.paidDate || "",
+      Supplier: supplier,
+      "Shipment ID": shipment.id,
+      "Invoice No": invoice.invoiceNo || "",
+      "Payment Type": payment.purchaseType || "",
+      "Payment Amount": Number(payment.amount || 0),
+      Currency: payment.currency || "USD",
+      "Amount USD": Number(amountUsd.toFixed(2)),
+      Note: payment.note || "",
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), "Summary");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(supplierRows), "Suppliers");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(invoiceRows), "Supplier Invoices");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(paymentRows), "Supplier Payments");
+    XLSX.writeFile(wb, `freight-os-supplier-report-${safeFileName(supplierName)}-${safeFileName(getDateRangeLabel(reportFromDate, reportToDate))}.xlsx`);
+  }
+
+  function exportSupplierReportPdf() {
+    if (!supplierStatement.rows.length) {
+      alert("No supplier movement found for the selected date range.");
+      return;
+    }
+    const supplierName = supplierReportSupplier === "all" ? "All Suppliers" : supplierReportSupplier;
+    const doc = new jsPDF({ orientation: "landscape" });
+    doc.setFontSize(16);
+    doc.text(`Supplier Statement - ${supplierName}`, 14, 16);
+    doc.setFontSize(10);
+    doc.text(`Date Range: ${getDateRangeLabel(reportFromDate, reportToDate)} | Exported: ${new Date().toLocaleString()}`, 14, 24);
+    autoTable(doc, {
+      startY: 30,
+      head: [["Shipments", "Invoice Total", "Paid", "Remaining"]],
+      body: [[supplierStatement.shipments, money(supplierStatement.invoiceUsd), money(supplierStatement.paidUsd), money(supplierStatement.remainingUsd)]],
+    });
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 8,
+      head: [["Date", "Supplier", "Shipment", "Category", "Invoice", "Paid", "Remaining", "Status"]],
+      body: supplierStatement.rows.map(({ shipment, invoice, supplier, invoiceUsd, paidUsd, remainingUsd, status }) => [
+        invoice.invoiceDate || getShipmentReportDate(shipment) || "",
+        supplier,
+        shipment.id,
+        invoice.category || "",
+        money(invoiceUsd),
+        money(paidUsd),
+        money(remainingUsd),
+        status,
+      ]),
+      styles: { fontSize: 7 },
+      headStyles: { fontSize: 7 },
+    });
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 8,
+      head: [["Date", "Supplier", "Shipment", "Payment Type", "Amount", "USD"]],
+      body: supplierStatement.payments.map(({ shipment, supplier, payment, amountUsd }) => [
+        payment.paidDate || "",
+        supplier,
+        shipment.id,
+        payment.purchaseType || "",
+        money(Number(payment.amount || 0), payment.currency || "USD"),
+        money(amountUsd),
+      ]),
+      styles: { fontSize: 7 },
+      headStyles: { fontSize: 7 },
+    });
+    doc.save(`freight-os-supplier-report-${safeFileName(supplierName)}-${safeFileName(getDateRangeLabel(reportFromDate, reportToDate))}.pdf`);
   }
 
   function updateBooking(field, value) {
@@ -2477,7 +2676,7 @@ function importLocalBackup(event) {
 
         {tab === "ports" && <PortsScreen canEditCore={canEditCore} addPort={addPort} portForm={portForm} updatePort={updatePort} ports={ports} role={role} deletePort={deletePort} />}
 
-        {tab === "reports" && <ReportsScreen reportFromDate={reportFromDate} setReportFromDate={setReportFromDate} reportToDate={reportToDate} setReportToDate={setReportToDate} canSeeFinance={canSeeFinance} exportDetailedReportExcel={exportDetailedReportExcel} exportDetailedReportPdf={exportDetailedReportPdf} reportData={reportData} clientReportCustomer={clientReportCustomer} customers={customers} setClientReportCustomer={setClientReportCustomer} customerStatement={customerStatement} agingReport={agingReport} partnerStats={partnerStats} exportClientReportExcel={exportClientReportExcel} exportClientReportPdf={exportClientReportPdf} openShipmentDetails={openShipmentDetails} activeFxRate={activeFxRate} createBackup={createBackup} downloadLocalBackup={downloadLocalBackup} importLocalBackup={importLocalBackup} role={role} resetDemoData={resetDemoData} />}
+        {tab === "reports" && <ReportsScreen reportFromDate={reportFromDate} setReportFromDate={setReportFromDate} reportToDate={reportToDate} setReportToDate={setReportToDate} canSeeFinance={canSeeFinance} exportDetailedReportExcel={exportDetailedReportExcel} exportDetailedReportPdf={exportDetailedReportPdf} reportData={reportData} clientReportCustomer={clientReportCustomer} customers={customers} setClientReportCustomer={setClientReportCustomer} customerStatement={customerStatement} supplierReportSupplier={supplierReportSupplier} suppliers={suppliers} setSupplierReportSupplier={setSupplierReportSupplier} supplierStatement={supplierStatement} agingReport={agingReport} partnerStats={partnerStats} exportClientReportExcel={exportClientReportExcel} exportClientReportPdf={exportClientReportPdf} exportSupplierReportExcel={exportSupplierReportExcel} exportSupplierReportPdf={exportSupplierReportPdf} openShipmentDetails={openShipmentDetails} activeFxRate={activeFxRate} createBackup={createBackup} downloadLocalBackup={downloadLocalBackup} importLocalBackup={importLocalBackup} role={role} resetDemoData={resetDemoData} />}
 
         {tab === "audit" && role === "admin" && <AuditLogScreen shipments={shipments} openShipmentDetails={openShipmentDetails} />}
 
