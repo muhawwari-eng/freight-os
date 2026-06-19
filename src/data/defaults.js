@@ -143,7 +143,27 @@ export const defaultSuppliers = [
   { id: "AIR-027", name: "Delta Cargo", type: "Airline", contact: "", phone: "", email: "", note: "" },
   { id: "AIR-028", name: "LATAM Cargo", type: "Airline", contact: "", phone: "", email: "", note: "" },
   { id: "AIR-029", name: "Avianca Cargo", type: "Airline", contact: "", phone: "", email: "", note: "" },
-  { id: "AIR-030", name: "Ethiopian Cargo", type: "Airline", contact: "", phone: "", email: "", note: "" }
+  { id: "AIR-030", name: "Ethiopian Cargo", type: "Airline", contact: "", phone: "", email: "", note: "" },
+  { id: "AIR-031", name: "Air Canada Cargo", type: "Airline", contact: "", phone: "", email: "", note: "" },
+  { id: "AIR-032", name: "Qantas Freight", type: "Airline", contact: "", phone: "", email: "", note: "" },
+  { id: "AIR-033", name: "Virgin Atlantic Cargo", type: "Airline", contact: "", phone: "", email: "", note: "" },
+  { id: "AIR-034", name: "SWISS WorldCargo", type: "Airline", contact: "", phone: "", email: "", note: "" },
+  { id: "AIR-035", name: "Austrian Airlines Cargo", type: "Airline", contact: "", phone: "", email: "", note: "" },
+  { id: "AIR-036", name: "ITA Airways Cargo", type: "Airline", contact: "", phone: "", email: "", note: "" },
+  { id: "AIR-037", name: "Iberia Cargo", type: "Airline", contact: "", phone: "", email: "", note: "" },
+  { id: "AIR-038", name: "TAP Air Cargo", type: "Airline", contact: "", phone: "", email: "", note: "" },
+  { id: "AIR-039", name: "LOT Cargo", type: "Airline", contact: "", phone: "", email: "", note: "" },
+  { id: "AIR-040", name: "Silk Way West Airlines", type: "Airline", contact: "", phone: "", email: "", note: "" },
+  { id: "AIR-041", name: "Atlas Air", type: "Airline", contact: "", phone: "", email: "", note: "" },
+  { id: "AIR-042", name: "Kalitta Air", type: "Airline", contact: "", phone: "", email: "", note: "" },
+  { id: "AIR-043", name: "AirBridgeCargo", type: "Airline", contact: "", phone: "", email: "", note: "" },
+  { id: "AIR-044", name: "MASkargo", type: "Airline", contact: "", phone: "", email: "", note: "" },
+  { id: "AIR-045", name: "Thai Airways Cargo", type: "Airline", contact: "", phone: "", email: "", note: "" },
+  { id: "AIR-046", name: "Vietnam Airlines Cargo", type: "Airline", contact: "", phone: "", email: "", note: "" },
+  { id: "AIR-047", name: "Garuda Indonesia Cargo", type: "Airline", contact: "", phone: "", email: "", note: "" },
+  { id: "AIR-048", name: "Air India Cargo", type: "Airline", contact: "", phone: "", email: "", note: "" },
+  { id: "AIR-049", name: "Gulf Air Cargo", type: "Airline", contact: "", phone: "", email: "", note: "" },
+  { id: "AIR-050", name: "Oman Air Cargo", type: "Airline", contact: "", phone: "", email: "", note: "" }
 ];
 
 export const emptyCustomerForm = {
@@ -168,6 +188,7 @@ export const emptyPortForm = {
   code: "",
   name: "",
   country: "",
+  locationType: "Seaport",
 };
 
 export const defaultWorldPorts = [
@@ -327,7 +348,40 @@ export const defaultWorldPorts = [
   { code: "NBO", name: "Nairobi Airport", country: "Kenya" },
   { code: "JNB", name: "Johannesburg Airport", country: "South Africa" },
   { code: "CPT", name: "Cape Town Airport", country: "South Africa" },
+  { code: "SEA", name: "Seattle-Tacoma Airport", country: "USA" },
+  { code: "IAH", name: "Houston George Bush Airport", country: "USA" },
+  { code: "SFO", name: "San Francisco Airport", country: "USA" },
+  { code: "YVR", name: "Vancouver Airport", country: "Canada" },
+  { code: "YYC", name: "Calgary Airport", country: "Canada" },
+  { code: "MNL", name: "Manila Ninoy Aquino Airport", country: "Philippines" },
+  { code: "CGK", name: "Jakarta Soekarno-Hatta Airport", country: "Indonesia" },
+  { code: "HAN", name: "Hanoi Noi Bai Airport", country: "Vietnam" },
+  { code: "SGN", name: "Ho Chi Minh City Airport", country: "Vietnam" },
+  { code: "KIX", name: "Osaka Kansai Airport", country: "Japan" },
+  { code: "SHA", name: "Shanghai Hongqiao Airport", country: "China" },
+  { code: "CKG", name: "Chongqing Jiangbei Airport", country: "China" },
+  { code: "CTU", name: "Chengdu Tianfu Airport", country: "China" },
+  { code: "KHI", name: "Karachi Jinnah Airport", country: "Pakistan" },
+  { code: "DAC", name: "Dhaka Hazrat Shahjalal Airport", country: "Bangladesh" },
+  { code: "CMB", name: "Colombo Bandaranaike Airport", country: "Sri Lanka" },
+  { code: "DEST-BEN", name: "Benghazi", country: "Libya", locationType: "Sea Destination" },
+  { code: "DEST-MSR", name: "Misrata", country: "Libya", locationType: "Sea Destination" },
+  { code: "DEST-TIP", name: "Tripoli", country: "Libya", locationType: "Sea Destination" },
+  { code: "DEST-TOB", name: "Tobruk", country: "Libya", locationType: "Sea Destination" },
+  { code: "DEST-DAM", name: "Damascus", country: "Syria", locationType: "Sea Destination" },
+  { code: "DEST-ALP", name: "Aleppo", country: "Syria", locationType: "Sea Destination" },
+  { code: "DEST-BGD", name: "Baghdad", country: "Iraq", locationType: "Sea Destination" },
+  { code: "DEST-EBL", name: "Erbil", country: "Iraq", locationType: "Sea Destination" },
+  { code: "DEST-RUH", name: "Riyadh", country: "Saudi Arabia", locationType: "Sea Destination" },
+  { code: "DEST-ANK", name: "Ankara", country: "Turkey", locationType: "Sea Destination" },
+  { code: "DEST-GZT", name: "Gaziantep", country: "Turkey", locationType: "Sea Destination" },
 ];
+
+export function getLocationType(location) {
+  if (location?.locationType) return location.locationType;
+  const code = String(location?.code || "");
+  return code.length === 3 || /airport/i.test(location?.name || "") ? "Airport" : "Seaport";
+}
 
 export function portLabel(port) {
   if (!port) return "";

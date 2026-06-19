@@ -5,7 +5,7 @@ import autoTable from "jspdf-autotable";
 import Login from "./Login";
 import { supabase } from "./supabase";
 import { DEFAULT_OPERATION_EMAIL, EMAILJS_PUBLIC_KEY, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, REMINDER_EMAIL_ENDPOINT } from "./config/email";
-import { defaultFxSettings, defaultShipments, defaultSuppliers, defaultWorldPorts, emptyBookingForm, emptyCustomerForm, emptyEditForm, emptyExpenseForm, emptyPaymentForm, emptyPortForm, emptyReceivableForm, emptySupplierForm, emptyTaskForm, emptyTransportForm, getLocalTodayDateKey, getNextCustomerId, getNextSupplierId } from "./data/defaults";
+import { defaultFxSettings, defaultShipments, defaultSuppliers, defaultWorldPorts, emptyBookingForm, emptyCustomerForm, emptyEditForm, emptyExpenseForm, emptyPaymentForm, emptyPortForm, emptyReceivableForm, emptySupplierForm, emptyTaskForm, emptyTransportForm, getLocalTodayDateKey, getLocationType, getNextCustomerId, getNextSupplierId } from "./data/defaults";
 import { addDays, buildReminderMessage, calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanSell, calcTotalCostUsd, dedupeShipments, getAgingReport, getCurrentMonthKey, getDateRangeLabel, getDaysLeft, getExpenses, getFinancialInvoices, getInvoicePaymentType, getMonthKey, getNextFinancialInvoiceNumber, getNextShipmentId, getPaymentSummary, getPayments, getRate, getReminderEventsForShipment, getReminderSentKey, getShipmentBillableQty, getShipmentDocuments, getShipmentFinancialLedger, getShipmentInternalNotes, getShipmentLoadDescription, getShipmentReportDate, getShipmentShareLinks, getShipmentUnitLabel, getTaskStatus, getTasks, getTransports, isAirShipment, isDateInRange, isFclShipment, isFullTruckShipment, isReminderAlreadySent, money, normalizeShipment, paymentAmountUsd, safeFileName, toDateKey } from "./utils/freight";
 import { ownedTables, readOwnedRows, saveOwnedRows } from "./services/ownedStorage";
 import { getTitle } from "./utils/titles";
@@ -242,13 +242,20 @@ export default function App() {
       if (onlineCustomers.length) setCustomers(onlineCustomers);
       else setCustomers([]);
 
-      if (onlineSuppliers.length) setSuppliers(onlineSuppliers);
+      if (onlineSuppliers.length) {
+        const existingNames = new Set(onlineSuppliers.map((supplier) => supplier.name.toLowerCase()));
+        setSuppliers([...onlineSuppliers, ...defaultSuppliers.filter((supplier) => !existingNames.has(supplier.name.toLowerCase()))]);
+      }
       else {
         setSuppliers(defaultSuppliers);
         await saveOwnedRows(ownedTables.suppliers, ownerId, defaultSuppliers, "SUP");
       }
 
-      if (onlinePorts.length) setPorts(onlinePorts);
+      if (onlinePorts.length) {
+        const normalizedPorts = onlinePorts.map((port) => ({ ...port, locationType: getLocationType(port) }));
+        const existingCodes = new Set(normalizedPorts.map((port) => port.code.toUpperCase()));
+        setPorts([...normalizedPorts, ...defaultWorldPorts.filter((port) => !existingCodes.has(port.code.toUpperCase())).map((port) => ({ ...port, locationType: getLocationType(port) }))]);
+      }
       else {
         setPorts(defaultWorldPorts);
         await saveOwnedRows(ownedTables.ports, ownerId, defaultWorldPorts.map((p) => ({ ...p, id: p.code })), "PORT");
@@ -1542,7 +1549,7 @@ export default function App() {
       return;
     }
     setSuppliers((prev) => [{ id: getNextSupplierId(), ...supplierForm }, ...prev]);
-    setSupplierForm(emptySupplierForm);
+    setSupplierForm({ ...emptySupplierForm, type: supplierForm.type });
   }
 
   function deleteSupplier(id) {
@@ -1561,6 +1568,7 @@ export default function App() {
       code: portForm.code.trim().toUpperCase(),
       name: portForm.name.trim(),
       country: portForm.country.trim() || "Not set",
+      locationType: portForm.locationType || "Seaport",
     };
     const exists = ports.some((p) => p.code.toUpperCase() === newPort.code);
     if (exists) {
@@ -1568,7 +1576,7 @@ export default function App() {
       return;
     }
     setPorts((prev) => [newPort, ...prev]);
-    setPortForm(emptyPortForm);
+    setPortForm({ ...emptyPortForm, locationType: portForm.locationType || "Seaport" });
   }
 
   function deletePort(code) {

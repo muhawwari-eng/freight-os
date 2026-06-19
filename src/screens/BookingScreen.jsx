@@ -1,4 +1,5 @@
 import { ContainerSelect, CustomerSelect, FormField, PaymentSelect, PortSelect, StatusSelect, SupplierSelect } from "../components/freightComponents";
+import { getLocationType } from "../data/defaults";
 import { getShipmentUnitLabel, isAirShipment, isFclShipment, isFullTruckShipment } from "../utils/freight";
 
 const shipmentModes = [
@@ -33,10 +34,25 @@ export function BookingScreen({ addShipmentFromForm, bookingForm, customers, upd
   const isRoad = mode === "Road";
   const isCross = mode === "Cross";
   const unitLabel = getShipmentUnitLabel(bookingForm);
+  const routeLocations = ports.filter((location) => {
+    const type = getLocationType(location);
+    if (isAir) return type === "Airport";
+    if (isSea || isCross) return type === "Seaport" || type === "Sea Destination";
+    return type !== "Airport";
+  });
+  const carrierCompanies = suppliers.filter((supplier) => {
+    if (isAir) return supplier.type === "Airline";
+    if (isRoad) return ["Road Transport", "Local Transport"].includes(supplier.type);
+    if (isSea) return supplier.type === "Shipping Line";
+    return ["Shipping Line", "Agent", "Operation Supplier", "Supplier", "Other"].includes(supplier.type);
+  });
 
   function selectMode(nextMode) {
     const selected = shipmentModes.find((item) => item.key === nextMode);
     updateBooking("cargoType", selected?.cargoType || "FCL");
+    updateBooking("line", "");
+    updateBooking("pol", "");
+    updateBooking("pod", "");
   }
 
   return (
@@ -82,13 +98,13 @@ export function BookingScreen({ addShipmentFromForm, bookingForm, customers, upd
         <BookingSection title="File & Parties">
           <FormField label="Entry Date"><input type="date" value={bookingForm.entryDate} onChange={(e) => updateBooking("entryDate", e.target.value)} required /></FormField>
           <FormField label="Client Name"><CustomerSelect value={bookingForm.customer} customers={customers} onChange={(value) => updateBooking("customer", value)} /></FormField>
-          <FormField label={isAir ? "Airline / Supplier" : isRoad ? "Road Carrier / Supplier" : "Carrier / Supplier Company"}><SupplierSelect value={bookingForm.line} suppliers={suppliers} onChange={(value) => updateBooking("line", value)} /></FormField>
+          <FormField label={isAir ? "Airline / Supplier" : isRoad ? "Road Carrier / Supplier" : "Carrier / Supplier Company"}><SupplierSelect value={bookingForm.line} suppliers={carrierCompanies} onChange={(value) => updateBooking("line", value)} /></FormField>
           <FormField label="Booking / Reference No"><input value={bookingForm.bookingNo} onChange={(e) => updateBooking("bookingNo", e.target.value)} /></FormField>
         </BookingSection>
 
         <BookingSection title={isAir ? "Air Route" : isRoad ? "Road Route" : isCross ? "Cross Route" : "Sea Route"}>
-          <FormField label={isAir ? "Origin Airport / POL" : "POL / Origin"}><PortSelect value={bookingForm.pol} ports={ports} onChange={(value) => updateBooking("pol", value)} /></FormField>
-          <FormField label={isAir ? "Destination Airport / POD" : "POD / Destination"}><PortSelect value={bookingForm.pod} ports={ports} onChange={(value) => updateBooking("pod", value)} /></FormField>
+          <FormField label={isAir ? "Origin Airport" : "POL / Origin"}><PortSelect value={bookingForm.pol} ports={routeLocations} onChange={(value) => updateBooking("pol", value)} /></FormField>
+          <FormField label={isAir ? "Destination Airport" : "POD / Destination"}><PortSelect value={bookingForm.pod} ports={routeLocations} onChange={(value) => updateBooking("pod", value)} /></FormField>
           {isSea && <FormField label="Vessel Name"><input value={bookingForm.vessel} onChange={(e) => updateBooking("vessel", e.target.value)} /></FormField>}
           {isCross && <FormField label="Cross Operation Note"><input value={bookingForm.vessel} onChange={(e) => updateBooking("vessel", e.target.value)} placeholder="Optional reference or routing note" /></FormField>}
         </BookingSection>
