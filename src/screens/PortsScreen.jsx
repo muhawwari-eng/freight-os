@@ -5,7 +5,7 @@ import { getLocationType, portLabel } from "../data/defaults";
 const locationTabs = [
   { key: "Seaport", label: "Sea Ports", codeLabel: "UN/LOCODE", placeholder: "Example: TRMER" },
   { key: "Airport", label: "Airports", codeLabel: "IATA Code", placeholder: "Example: IST" },
-  { key: "Sea Destination", label: "Sea Destinations", codeLabel: "Destination Code", placeholder: "Example: DEST-BEN" },
+  { key: "Sea Destination", label: "Destinations", codeLabel: "Destination Code", placeholder: "Example: DEST-BEN" },
 ];
 
 export function PortsScreen({ canEditCore, addPort, portForm, updatePort, ports, role, deletePort }) {
@@ -33,7 +33,7 @@ export function PortsScreen({ canEditCore, addPort, portForm, updatePort, ports,
       <div className="panelHead">
         <div>
           <h2>Ports & Locations</h2>
-          <p className="smallText">Manage sea ports, international airports, and final sea-freight destinations.</p>
+          <p className="smallText">Manage sea ports, international airports, and delivery destinations.</p>
         </div>
       </div>
 
