@@ -1,7 +1,16 @@
+import { useState } from "react";
 import { Card, CustomerSelect, FormField, SupplierSelect } from "../components/freightComponents";
 import { calcNetProfit, calcOceanSell, calcTotalCostUsd, getDateRangeLabel, getShipmentReportDate, money } from "../utils/freight";
 
 export function ReportsScreen({ reportFromDate, setReportFromDate, reportToDate, setReportToDate, canSeeFinance, exportDetailedReportExcel, exportDetailedReportPdf, reportData, clientReportCustomer, customers, setClientReportCustomer, customerStatement, supplierReportSupplier, suppliers, setSupplierReportSupplier, supplierStatement, agingReport, partnerStats, exportClientReportExcel, exportClientReportPdf, exportSupplierReportExcel, exportSupplierReportPdf, openShipmentDetails, activeFxRate, createBackup, downloadLocalBackup, importLocalBackup, role, resetDemoData }) {
+  const [reportView, setReportView] = useState("overview");
+  const reportTabs = [
+    ["overview", "Overview"],
+    canSeeFinance && ["customer", "Customer Statement"],
+    canSeeFinance && ["supplier", "Supplier Statement"],
+    ["shipments", "Shipment Details"],
+  ].filter(Boolean);
+
   return (
     <section className="panel">
       <div className="panelHead">
@@ -26,7 +35,13 @@ export function ReportsScreen({ reportFromDate, setReportFromDate, reportToDate,
         <Card icon="P" title="Net Profit" value={canSeeFinance ? money(reportData.summary.netProfit) : "-"} />
       </section>
 
-      {canSeeFinance && (
+      <div className="dashboardSubtabs detailSubtabs mt">
+        {reportTabs.map(([key, label]) => (
+          <button key={key} className={reportView === key ? "active" : ""} onClick={() => setReportView(key)}>{label}</button>
+        ))}
+      </div>
+
+      {reportView === "overview" && canSeeFinance && (
         <div className="detailGrid">
           <p><b>Total Costs:</b> {money(reportData.summary.costs)}</p>
           <p><b>Gross Profit:</b> {money(reportData.summary.grossProfit)}</p>
@@ -35,7 +50,7 @@ export function ReportsScreen({ reportFromDate, setReportFromDate, reportToDate,
         </div>
       )}
 
-      <div className="twoCols mt">
+      {reportView === "overview" && <div className="twoCols mt">
         <div className="note">
           <h3>Customer Statistics</h3>
           {(partnerStats?.customers || []).length === 0 && <p>No customer data for this date range.</p>}
@@ -57,9 +72,9 @@ export function ReportsScreen({ reportFromDate, setReportFromDate, reportToDate,
             </div>
           ))}
         </div>
-      </div>
+      </div>}
 
-      {canSeeFinance && agingReport && (
+      {reportView === "overview" && canSeeFinance && agingReport && (
         <div className="note mt">
           <h3>Aging Report</h3>
           <div className="agingGrid">
@@ -76,7 +91,7 @@ export function ReportsScreen({ reportFromDate, setReportFromDate, reportToDate,
         </div>
       )}
 
-      <div className="note mt">
+      {reportView === "customer" && <div className="note mt">
         <div className="panelHead">
           <div>
             <h3>Customer Statement</h3>
@@ -157,9 +172,9 @@ export function ReportsScreen({ reportFromDate, setReportFromDate, reportToDate,
             </tbody>
           </table>
         </div>
-      </div>
+      </div>}
 
-      {canSeeFinance && (
+      {reportView === "supplier" && canSeeFinance && (
         <div className="note mt">
           <div className="panelHead">
             <div>
@@ -242,7 +257,7 @@ export function ReportsScreen({ reportFromDate, setReportFromDate, reportToDate,
         </div>
       )}
 
-      <div className="tableWrap mt">
+      {reportView === "shipments" && <div className="tableWrap mt">
         <table>
           <thead>
             <tr>
@@ -273,7 +288,7 @@ export function ReportsScreen({ reportFromDate, setReportFromDate, reportToDate,
             ))}
           </tbody>
         </table>
-      </div>
+      </div>}
 
       <div className="actions mt">
         {canSeeFinance && <button className="saveBtn" onClick={() => createBackup(true)}>Create Manual Backup</button>}

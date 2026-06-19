@@ -803,16 +803,16 @@ export default function App() {
   }, [reportData.shipments, clientReportCustomer, activeFxRate]);
 
   const supplierStatement = useMemo(() => {
-    const matchesSupplier = (shipment, row) => {
+    const matchesSupplier = (row) => {
       if (supplierReportSupplier === "all") return true;
-      return [row.party, shipment.line, row.category].some((value) => String(value || "").toLowerCase() === supplierReportSupplier.toLowerCase());
+      return String(row.party || "").toLowerCase() === supplierReportSupplier.toLowerCase();
     };
 
     const rows = [];
     reportData.shipments.forEach((shipment) => {
       const ledger = getShipmentFinancialLedger(shipment, activeFxRate);
       ledger.purchaseRows
-        .filter((row) => matchesSupplier(shipment, row))
+        .filter((row) => matchesSupplier(row))
         .forEach((invoice) => {
           rows.push({
             shipment,
@@ -964,6 +964,25 @@ export default function App() {
         s.status || "",
         s.paymentStatus || "",
         money(calcOceanSell(s)),
+      ]),
+      styles: { fontSize: 7 },
+      headStyles: { fontSize: 7 },
+    });
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 8,
+      head: [["Shipments", "Invoice Total", "Collected", "Remaining"]],
+      body: [[customerStatement.shipments, money(customerStatement.invoiceUsd), money(customerStatement.collectedUsd), money(customerStatement.remainingUsd)]],
+      styles: { fontSize: 8 },
+    });
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 8,
+      head: [["Shipment", "Invoice", "Collected", "Remaining", "Status"]],
+      body: customerStatement.rows.map(({ shipment, invoiceUsd, collectedUsd, remainingUsd, status }) => [
+        shipment.id,
+        money(invoiceUsd),
+        money(collectedUsd),
+        money(remainingUsd),
+        status,
       ]),
       styles: { fontSize: 7 },
       headStyles: { fontSize: 7 },
