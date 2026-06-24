@@ -2683,15 +2683,15 @@ function importLocalBackup(event) {
 
         {tab === "booking" && <BookingScreen addShipmentFromForm={addShipmentFromForm} bookingForm={bookingForm} customers={customers} updateBooking={updateBooking} suppliers={suppliers} ports={ports} activeFxRate={activeFxRate} />}
 
-        {tab === "transport" && <TransportScreen addTransportToShipment={addTransportToShipment} transportForm={transportForm} updateTransport={updateTransport} shipments={shipments} deleteTransport={deleteTransport} canSeeFinance={canSeeFinance} />}
+        {tab === "transport" && <TransportScreen addTransportToShipment={addTransportToShipment} transportForm={transportForm} updateTransport={updateTransport} shipments={shipments} suppliers={suppliers} deleteTransport={deleteTransport} canSeeFinance={canSeeFinance} />}
 
         {tab === "expenses" && canSeeFinance && <ExpensesScreen addExpenseToShipment={addExpenseToShipment} expenseForm={expenseForm} updateExpense={updateExpense} shipments={shipments} suppliers={suppliers} deleteExpense={deleteExpense} canEditCore={canEditCore} />}
 
-        {tab === "payments" && canSeeFinance && <PaymentsScreen canManagePayments={canManagePayments} addPaymentToShipment={addPaymentToShipment} paymentForm={paymentForm} updatePayment={updatePayment} shipments={shipments} activeFxRate={activeFxRate} deletePayment={deletePayment} openShipmentDetails={openShipmentDetails} editingPayment={editingPayment} startEditPayment={startEditPayment} cancelEditPayment={cancelEditPayment} />}
+        {tab === "payments" && canSeeFinance && <PaymentsScreen canManagePayments={canManagePayments} addPaymentToShipment={addPaymentToShipment} paymentForm={paymentForm} updatePayment={updatePayment} shipments={shipments} suppliers={suppliers} activeFxRate={activeFxRate} deletePayment={deletePayment} openShipmentDetails={openShipmentDetails} editingPayment={editingPayment} startEditPayment={startEditPayment} cancelEditPayment={cancelEditPayment} />}
 
         {tab === "receivables" && canSeeFinance && <ReceivablesScreen canManagePayments={canManagePayments} addReceivableToShipment={addReceivableToShipment} receivableForm={receivableForm} updateReceivable={updateReceivable} shipments={shipments} activeFxRate={activeFxRate} deletePayment={deletePayment} openShipmentDetails={openShipmentDetails} />}
 
-        {tab === "financialManagement" && canSeeFinance && <FinancialManagementScreen shipments={shipments} activeFxRate={activeFxRate} canManagePayments={canManagePayments} saveFinancialInvoice={saveFinancialInvoice} deleteFinancialInvoice={deleteFinancialInvoice} addInvoicePayment={addInvoicePayment} assignInvoicePayment={assignInvoicePayment} />}
+        {tab === "financialManagement" && canSeeFinance && <FinancialManagementScreen shipments={shipments} customers={customers} suppliers={suppliers} activeFxRate={activeFxRate} canManagePayments={canManagePayments} saveFinancialInvoice={saveFinancialInvoice} deleteFinancialInvoice={deleteFinancialInvoice} addInvoicePayment={addInvoicePayment} assignInvoicePayment={assignInvoicePayment} />}
 
         {tab === "tasks" && <TasksScreen canEditOperation={canEditOperation} checkAndSendReminders={checkAndSendReminders} reminderRunning={reminderRunning} taskFilter={taskFilter} setTaskFilter={setTaskFilter} taskDashboard={taskDashboard} addTaskToShipment={addTaskToShipment} taskForm={taskForm} updateTask={updateTask} shipments={shipments} selectedTaskShipment={selectedTaskShipment} notifications={notifications} clearNotifications={clearNotifications} allTasks={allTasks} toggleTaskStatus={toggleTaskStatus} role={role} deleteTask={deleteTask} />}
 

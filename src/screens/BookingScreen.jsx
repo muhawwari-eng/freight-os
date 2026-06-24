@@ -42,7 +42,7 @@ export function BookingScreen({ addShipmentFromForm, bookingForm, customers, upd
   });
   const carrierCompanies = suppliers.filter((supplier) => {
     if (isAir) return supplier.type === "Airline";
-    if (isRoad) return ["Road Transport", "Local Transport"].includes(supplier.type);
+    if (isRoad) return supplier.type === "Road Transport";
     if (isSea) return supplier.type === "Shipping Line";
     return ["Shipping Line", "Agent", "Operation Supplier", "Supplier", "Other"].includes(supplier.type);
   });

@@ -5,7 +5,8 @@ import { calcTotalCostUsd, getExpenses, getTransports, money } from "../utils/fr
 const companyTabs = [
   { key: "Shipping Line", label: "Shipping Lines", types: ["Shipping Line"] },
   { key: "Airline", label: "Airlines", types: ["Airline"] },
-  { key: "Road Transport", label: "Road Carriers", types: ["Road Transport", "Local Transport"] },
+  { key: "Road Transport", label: "Road Carriers", types: ["Road Transport"] },
+  { key: "Local Transport", label: "Local Transport", types: ["Local Transport"] },
   { key: "Agent", label: "Agents", types: ["Agent"] },
   { key: "Operation Supplier", label: "Suppliers", types: ["Operation Supplier", "Supplier", "Other"] },
 ];

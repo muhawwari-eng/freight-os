@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { FormField } from "../components/freightComponents";
 import { calcSingleTransportTry, getTransports, money } from "../utils/freight";
 
-export function TransportScreen({ addTransportToShipment, transportForm, updateTransport, shipments, deleteTransport, canSeeFinance }) {
+export function TransportScreen({ addTransportToShipment, transportForm, updateTransport, shipments, suppliers, deleteTransport, canSeeFinance }) {
   const [query, setQuery] = useState("");
   const [companyFilter, setCompanyFilter] = useState("all");
 
@@ -12,8 +12,12 @@ export function TransportScreen({ addTransportToShipment, transportForm, updateT
     index,
     totalTry: calcSingleTransportTry(transport),
   }))), [shipments]);
+  const localTransportCompanies = suppliers.filter((supplier) => supplier.type === "Local Transport");
 
-  const companies = ["all", ...new Set(transportRows.map((row) => row.transport.company || "No company"))];
+  const companies = ["all", ...new Set([
+    ...localTransportCompanies.map((supplier) => supplier.name),
+    ...transportRows.map((row) => row.transport.company || "No company"),
+  ])];
   const filteredRows = transportRows.filter(({ shipment, transport }) => {
     const text = query.trim().toLowerCase();
     const matchesText = !text || [shipment.id, shipment.customer, shipment.bookingNo, transport.company, transport.from, transport.to, transport.note]
@@ -50,7 +54,13 @@ export function TransportScreen({ addTransportToShipment, transportForm, updateT
           <form onSubmit={addTransportToShipment}>
             <div className="formGrid one">
               <FormField label="Shipment"><select value={transportForm.shipmentId} onChange={(e) => updateTransport("shipmentId", e.target.value)}><option value="">Select Shipment</option>{shipments.map((shipment) => <option key={shipment.id} value={shipment.id}>{shipment.id} - {shipment.customer}</option>)}</select></FormField>
-              <FormField label="Transport Company"><input value={transportForm.company} onChange={(e) => updateTransport("company", e.target.value)} /></FormField>
+              <FormField label="Transport Company">
+                <select value={transportForm.company} onChange={(e) => updateTransport("company", e.target.value)}>
+                  <option value="">Select Local Transport Company</option>
+                  {localTransportCompanies.map((company) => <option key={company.id} value={company.name}>{company.name}</option>)}
+                </select>
+              </FormField>
+              {localTransportCompanies.length === 0 && <p className="smallText">Add a company under Companies &gt; Local Transport first.</p>}
               <FormField label="From"><input value={transportForm.from} onChange={(e) => updateTransport("from", e.target.value)} /></FormField>
               <FormField label="To"><input value={transportForm.to} onChange={(e) => updateTransport("to", e.target.value)} /></FormField>
               <FormField label="Truck Quantity"><input type="number" min="1" value={transportForm.truckQty} onChange={(e) => updateTransport("truckQty", e.target.value)} /></FormField>

@@ -79,7 +79,7 @@ function InvoiceTable({ title, rows, canManagePayments, onEdit, onDelete }) {
   );
 }
 
-export function FinancialManagementScreen({ shipments, activeFxRate, canManagePayments, saveFinancialInvoice, deleteFinancialInvoice, addInvoicePayment, assignInvoicePayment }) {
+export function FinancialManagementScreen({ shipments, customers, suppliers, activeFxRate, canManagePayments, saveFinancialInvoice, deleteFinancialInvoice, addInvoicePayment, assignInvoicePayment }) {
   const [selectedShipmentId, setSelectedShipmentId] = useState("");
   const [invoiceForm, setInvoiceForm] = useState(() => newInvoiceForm(activeFxRate));
   const [editingInvoiceId, setEditingInvoiceId] = useState(null);
@@ -94,14 +94,26 @@ export function FinancialManagementScreen({ shipments, activeFxRate, canManagePa
   const invoiceNumber = editingInvoiceId
     ? invoiceForm.invoiceNo
     : shipment ? getNextFinancialInvoiceNumber(shipment, invoiceForm.invoiceType) : "";
+  const partyOptions = invoiceForm.invoiceType === "Sale"
+    ? customers.map((customer) => ({ id: customer.id, name: customer.name, type: "Customer" }))
+    : suppliers.filter((supplier) => {
+      if (invoiceForm.category === "Local Transport") return supplier.type === "Local Transport";
+      if (invoiceForm.category === "Ocean Freight") return supplier.type === "Shipping Line";
+      return true;
+    });
+  const selectableParties = invoiceForm.party && !partyOptions.some((party) => party.name === invoiceForm.party)
+    ? [{ id: `legacy-${invoiceForm.party}`, name: invoiceForm.party, type: "Existing" }, ...partyOptions]
+    : partyOptions;
 
   function updateInvoice(field, value) {
     setInvoiceForm((previous) => {
+      if (field === "category") return { ...previous, category: value, party: "" };
       if (field !== "invoiceType") return { ...previous, [field]: value };
       return {
         ...previous,
         invoiceType: value,
         category: value === "Sale" ? "Freight Sale" : "Ocean Freight",
+        party: value === "Sale" ? shipment?.customer || "" : "",
       };
     });
   }
@@ -280,7 +292,12 @@ export function FinancialManagementScreen({ shipments, activeFxRate, canManagePa
                   <FormField label="Invoice Number"><input value={invoiceNumber} readOnly /></FormField>
                   <FormField label="Invoice Date"><input type="date" value={invoiceForm.invoiceDate} onChange={(event) => updateInvoice("invoiceDate", event.target.value)} /></FormField>
                   <FormField label="Due Date"><input type="date" value={invoiceForm.dueDate} onChange={(event) => updateInvoice("dueDate", event.target.value)} /></FormField>
-                  <FormField label="Customer / Supplier"><input value={invoiceForm.party} onChange={(event) => updateInvoice("party", event.target.value)} /></FormField>
+                  <FormField label={invoiceForm.invoiceType === "Sale" ? "Customer" : "Company / Supplier"}>
+                    <select value={invoiceForm.party} onChange={(event) => updateInvoice("party", event.target.value)}>
+                      <option value="">Select {invoiceForm.invoiceType === "Sale" ? "Customer" : "Company"}</option>
+                      {selectableParties.map((party) => <option key={party.id} value={party.name}>{party.name}{party.type ? ` - ${party.type}` : ""}</option>)}
+                    </select>
+                  </FormField>
                   <FormField label="Amount Before Tax"><input type="number" step="0.01" value={invoiceForm.amount} onChange={(event) => updateInvoice("amount", event.target.value)} /></FormField>
                   <FormField label="Tax Rate %"><input type="number" step="0.01" value={invoiceForm.taxRate} onChange={(event) => updateInvoice("taxRate", event.target.value)} /></FormField>
                   <FormField label="Currency"><select value={invoiceForm.currency} onChange={(event) => updateInvoice("currency", event.target.value)}><option value="USD">USD</option><option value="TRY">TRY</option><option value="EUR">EUR</option></select></FormField>

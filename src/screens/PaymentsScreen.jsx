@@ -4,10 +4,23 @@ import { getPaymentSummary, getPayments, money, paymentAmountUsd } from "../util
 
 const paymentTypes = ["all", "Ocean Freight", "Local Transport", "Expense", "Other", "Customer Receipt"];
 
-export function PaymentsScreen({ canManagePayments, addPaymentToShipment, paymentForm, updatePayment, shipments, activeFxRate, deletePayment, openShipmentDetails, editingPayment, startEditPayment, cancelEditPayment }) {
+export function PaymentsScreen({ canManagePayments, addPaymentToShipment, paymentForm, updatePayment, shipments, suppliers, activeFxRate, deletePayment, openShipmentDetails, editingPayment, startEditPayment, cancelEditPayment }) {
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [flowFilter, setFlowFilter] = useState("payables");
+  const companyOptions = suppliers.filter((supplier) => {
+    if (paymentForm.purchaseType === "Ocean Freight") return supplier.type === "Shipping Line";
+    if (paymentForm.purchaseType === "Local Transport") return supplier.type === "Local Transport";
+    return true;
+  });
+  const selectableCompanyOptions = paymentForm.company && !companyOptions.some((company) => company.name === paymentForm.company)
+    ? [{ id: `legacy-${paymentForm.company}`, name: paymentForm.company, type: "Existing" }, ...companyOptions]
+    : companyOptions;
+
+  function updatePurchaseType(value) {
+    updatePayment("purchaseType", value);
+    updatePayment("company", "");
+  }
 
   const paymentRows = useMemo(() => shipments.flatMap((shipment) => getPayments(shipment).map((payment) => ({
     shipment,
@@ -64,8 +77,13 @@ export function PaymentsScreen({ canManagePayments, addPaymentToShipment, paymen
             <form onSubmit={addPaymentToShipment}>
               <div className="formGrid one">
                 <FormField label="Shipment"><select value={paymentForm.shipmentId} onChange={(e) => updatePayment("shipmentId", e.target.value)} disabled={Boolean(editingPayment)}><option value="">Select Shipment</option>{shipments.map((shipment) => <option key={shipment.id} value={shipment.id}>{shipment.id} - {shipment.customer}</option>)}</select></FormField>
-                <FormField label="Payment / Purchase Type"><select value={paymentForm.purchaseType} onChange={(e) => updatePayment("purchaseType", e.target.value)}><option value="Ocean Freight">Ocean Freight</option><option value="Local Transport">Local Transport</option><option value="Expense">Expense</option><option value="Other">Other</option></select></FormField>
-                <FormField label="Company / Party"><input value={paymentForm.company} onChange={(e) => updatePayment("company", e.target.value)} placeholder="Carrier, transport company, or supplier" /></FormField>
+                <FormField label="Payment / Purchase Type"><select value={paymentForm.purchaseType} onChange={(e) => updatePurchaseType(e.target.value)}><option value="Ocean Freight">Ocean Freight</option><option value="Local Transport">Local Transport</option><option value="Expense">Expense</option><option value="Other">Other</option></select></FormField>
+                <FormField label="Company / Party">
+                  <select value={paymentForm.company} onChange={(e) => updatePayment("company", e.target.value)}>
+                    <option value="">Select Company</option>
+                    {selectableCompanyOptions.map((company) => <option key={company.id} value={company.name}>{company.name} - {company.type}</option>)}
+                  </select>
+                </FormField>
                 <FormField label="Amount"><input type="number" step="0.01" value={paymentForm.amount} onChange={(e) => updatePayment("amount", e.target.value)} /></FormField>
                 <FormField label="Currency"><select value={paymentForm.currency} onChange={(e) => updatePayment("currency", e.target.value)}><option value="USD">USD</option><option value="TRY">TRY</option><option value="EUR">EUR</option></select></FormField>
                 <FormField label="FX Rate to USD"><input type="number" step="0.0001" value={paymentForm.fxRate || activeFxRate} onChange={(e) => updatePayment("fxRate", e.target.value)} /></FormField>
