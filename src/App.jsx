@@ -165,16 +165,13 @@ export default function App() {
     async function loadPublicShare() {
       setPublicShareStatus("loading");
       try {
-        const { data, error } = await supabase.from(ownedTables.shipments).select("item_id,data");
-        if (error) throw error;
-        const match = (data || [])
-          .map((row) => normalizeShipment({ ...row.data, id: row.data?.id || row.item_id }))
-          .find((shipment) => getShipmentShareLinks(shipment).some((link) => link.token === tokenShare));
-        const link = match ? getShipmentShareLinks(match).find((item) => item.token === tokenShare) : null;
-        if (!match || !link) throw new Error("Share link was not found.");
-        if (link.disabled) throw new Error("This share link is disabled.");
+        const response = await fetch(`/api/public-share?token=${encodeURIComponent(tokenShare)}`);
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.error || "Share link is not available.");
+        }
         if (!cancelled) {
-          setPublicShare(buildPublicSharePayload(match, link.permissions || {}, link.token, link.createdAt));
+          setPublicShare(payload.share);
           setPublicShareStatus("ready");
         }
       } catch (error) {
@@ -1591,45 +1588,6 @@ export default function App() {
     setTab("details");
   }
 
-  function buildPublicSharePayload(shipment, options = {}, token = "", sharedAt = new Date().toISOString()) {
-    const normalized = normalizeShipment(shipment);
-    const shareOptions = {
-      includePaymentStatus: true,
-      includeDocuments: true,
-      includeInvoiceAmount: false,
-      ...options,
-    };
-    return {
-      version: 2,
-      token,
-      permissions: shareOptions,
-      id: normalized.id,
-      customer: normalized.customer,
-      pol: normalized.pol,
-      pod: normalized.pod,
-      bookingNo: normalized.bookingNo,
-      cargoType: normalized.cargoType,
-      loadDescription: getShipmentLoadDescription(normalized),
-      status: normalized.status,
-      paymentStatus: shareOptions.includePaymentStatus ? normalized.paymentStatus : "",
-      customerAmount: shareOptions.includeInvoiceAmount ? calcOceanSell(normalized) : null,
-      cutOff: normalized.cutOff,
-      etd: normalized.etd,
-      eta: normalized.eta,
-      sharedAt,
-      documents: shareOptions.includeDocuments
-        ? getShipmentDocuments(normalized).map((document) => ({
-          id: document.id,
-          name: document.name,
-          type: document.type,
-          uploadedAt: document.uploadedAt,
-          customerCanDownload: Boolean(document.customerCanDownload),
-          downloadUrl: document.customerCanDownload ? (document.publicUrl || document.dataUrl || "") : "",
-        }))
-        : [],
-    };
-  }
-
   async function shareShipmentWithCustomer(shipment, options = {}) {
     const normalized = normalizeShipment(shipment);
     const shareOptions = {
@@ -1661,6 +1619,21 @@ export default function App() {
     }));
     if (updatedSelected) setSelectedShipment(updatedSelected);
 
+    if (user?.id && updatedSelected) {
+      const { error } = await supabase
+        .from(ownedTables.shipments)
+        .upsert({
+          owner_id: user.id,
+          item_id: updatedSelected.id,
+          data: updatedSelected,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "owner_id,item_id" });
+      if (error) {
+        alert(`Could not publish this customer link online: ${error.message}`);
+        return;
+      }
+    }
+
     try {
       await navigator.clipboard.writeText(url);
       alert("Customer share link copied.");
@@ -1669,7 +1642,7 @@ export default function App() {
     }
   }
 
-  function disableShipmentShareLink(shipmentId, linkId) {
+  async function disableShipmentShareLink(shipmentId, linkId) {
     let updatedSelected = null;
     setShipments((previous) => previous.map((shipment) => {
       if (shipment.id !== shipmentId) return shipment;
@@ -1682,6 +1655,18 @@ export default function App() {
       return updated;
     }));
     if (updatedSelected) setSelectedShipment(updatedSelected);
+
+    if (user?.id && updatedSelected) {
+      const { error } = await supabase
+        .from(ownedTables.shipments)
+        .upsert({
+          owner_id: user.id,
+          item_id: updatedSelected.id,
+          data: updatedSelected,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "owner_id,item_id" });
+      if (error) alert(`Could not disable this link online: ${error.message}`);
+    }
   }
 
   function startEditShipment() {
