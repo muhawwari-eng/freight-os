@@ -49,8 +49,10 @@ export default function App() {
   const [customers, setCustomers] = useState([]);
 
   const [suppliers, setSuppliers] = useState(defaultSuppliers);
+  const [sharedSuppliersLoaded, setSharedSuppliersLoaded] = useState(false);
 
   const [ports, setPorts] = useState(defaultWorldPorts);
+  const [sharedPortsLoaded, setSharedPortsLoaded] = useState(false);
 
   const [query, setQuery] = useState("");
   const [shipmentFilters, setShipmentFilters] = useState({
@@ -221,17 +223,13 @@ export default function App() {
     setOnlineDataLoaded(false);
 
     try {
-      const [shipmentsResult, customersResult, suppliersResult, portsResult] = await Promise.all([
+      const [shipmentsResult, customersResult] = await Promise.all([
         supabase.from(ownedTables.shipments).select("item_id,data").eq("owner_id", ownerId),
         supabase.from(ownedTables.customers).select("item_id,data").eq("owner_id", ownerId),
-        supabase.from(ownedTables.suppliers).select("item_id,data").eq("owner_id", ownerId),
-        supabase.from(ownedTables.ports).select("item_id,data").eq("owner_id", ownerId),
       ]);
 
       const onlineShipments = readOwnedRows(shipmentsResult, normalizeShipment);
       const onlineCustomers = readOwnedRows(customersResult);
-      const onlineSuppliers = readOwnedRows(suppliersResult);
-      const onlinePorts = readOwnedRows(portsResult);
 
       if (onlineShipments.length) setShipments(dedupeShipments(onlineShipments));
       else setShipments([]);
@@ -239,31 +237,63 @@ export default function App() {
       if (onlineCustomers.length) setCustomers(onlineCustomers);
       else setCustomers([]);
 
-      if (onlineSuppliers.length) {
-        const existingNames = new Set(onlineSuppliers.map((supplier) => supplier.name.toLowerCase()));
-        setSuppliers([...onlineSuppliers, ...defaultSuppliers.filter((supplier) => !existingNames.has(supplier.name.toLowerCase()))]);
-      }
-      else {
-        setSuppliers(defaultSuppliers);
-        await saveOwnedRows(ownedTables.suppliers, ownerId, defaultSuppliers, "SUP");
-      }
-
-      if (onlinePorts.length) {
-        const normalizedPorts = onlinePorts.map((port) => ({ ...port, locationType: getLocationType(port) }));
-        const existingCodes = new Set(normalizedPorts.map((port) => port.code.toUpperCase()));
-        setPorts([...normalizedPorts, ...defaultWorldPorts.filter((port) => !existingCodes.has(port.code.toUpperCase())).map((port) => ({ ...port, locationType: getLocationType(port) }))]);
-      }
-      else {
-        setPorts(defaultWorldPorts);
-        await saveOwnedRows(ownedTables.ports, ownerId, defaultWorldPorts.map((p) => ({ ...p, id: p.code })), "PORT");
-      }
-
       setOnlineDataLoaded(true);
       setSaveStatus("Saved online");
     } catch (error) {
       console.error("Could not load online data:", error);
       setSaveStatus("Local mode - run Supabase SQL setup");
       setOnlineDataLoaded(false);
+    }
+  }
+
+  async function loadSharedSuppliers(accessToken) {
+    setSharedSuppliersLoaded(false);
+    try {
+      const response = await fetch("/api/shared-suppliers", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not load shared companies.");
+
+      const onlineSuppliers = Array.isArray(payload.suppliers) ? payload.suppliers : [];
+      const existingNames = new Set(onlineSuppliers.map((supplier) => String(supplier.name || "").trim().toLowerCase()));
+      setSuppliers([
+        ...onlineSuppliers,
+        ...defaultSuppliers.filter((supplier) => !existingNames.has(supplier.name.toLowerCase())),
+      ]);
+      setSharedSuppliersLoaded(true);
+    } catch (error) {
+      console.error("Could not load shared companies:", error);
+      setSuppliers(defaultSuppliers);
+      setSharedSuppliersLoaded(false);
+      setSaveStatus("Companies are local - shared sync failed");
+    }
+  }
+
+  async function loadSharedPorts(accessToken) {
+    setSharedPortsLoaded(false);
+    try {
+      const response = await fetch("/api/shared-ports", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not load shared ports.");
+
+      const onlinePorts = Array.isArray(payload.ports) ? payload.ports : [];
+      const normalizedPorts = onlinePorts.map((port) => ({ ...port, locationType: getLocationType(port) }));
+      const existingCodes = new Set(normalizedPorts.map((port) => String(port.code || "").toUpperCase()));
+      setPorts([
+        ...normalizedPorts,
+        ...defaultWorldPorts
+          .filter((port) => !existingCodes.has(String(port.code || "").toUpperCase()))
+          .map((port) => ({ ...port, locationType: getLocationType(port) })),
+      ]);
+      setSharedPortsLoaded(true);
+    } catch (error) {
+      console.error("Could not load shared ports:", error);
+      setPorts(defaultWorldPorts);
+      setSharedPortsLoaded(false);
+      setSaveStatus("Ports are local - shared sync failed");
     }
   }
 
@@ -277,7 +307,9 @@ export default function App() {
         setShipments([]);
         setCustomers([]);
         setSuppliers(defaultSuppliers);
+        setSharedSuppliersLoaded(false);
         setPorts(defaultWorldPorts);
+        setSharedPortsLoaded(false);
         const { data: profileData } = await supabase
           .from("profiles")
           .select("*")
@@ -285,7 +317,11 @@ export default function App() {
           .maybeSingle();
 
         setProfile(profileData);
-        await loadOwnedData(currentUser.id);
+        await Promise.all([
+          loadOwnedData(currentUser.id),
+          loadSharedSuppliers(data.session.access_token),
+          loadSharedPorts(data.session.access_token),
+        ]);
       }
     };
 
@@ -301,8 +337,6 @@ export default function App() {
         await Promise.all([
           saveOwnedRows(ownedTables.shipments, user.id, dedupeShipments(shipments), "SHP"),
           saveOwnedRows(ownedTables.customers, user.id, customers, "CUS"),
-          saveOwnedRows(ownedTables.suppliers, user.id, suppliers, "SUP"),
-          saveOwnedRows(ownedTables.ports, user.id, ports.map((p) => ({ ...p, id: p.code })), "PORT"),
         ]);
         setSaveStatus("Saved online");
       } catch (error) {
@@ -312,7 +346,61 @@ export default function App() {
     }, 700);
 
     return () => clearTimeout(timer);
-  }, [shipments, customers, suppliers, ports, user?.id, onlineDataLoaded]);
+  }, [shipments, customers, user?.id, onlineDataLoaded]);
+
+  useEffect(() => {
+    if (!user?.id || !sharedSuppliersLoaded) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const accessToken = data.session?.access_token;
+        if (!accessToken) throw new Error("Your session expired. Please log in again.");
+        const response = await fetch("/api/shared-suppliers", {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ suppliers }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not sync shared companies.");
+      } catch (error) {
+        console.error("Could not sync shared companies:", error);
+        setSaveStatus("Companies saved locally - shared sync failed");
+      }
+    }, 700);
+
+    return () => clearTimeout(timer);
+  }, [suppliers, user?.id, sharedSuppliersLoaded]);
+
+  useEffect(() => {
+    if (!user?.id || !sharedPortsLoaded) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const accessToken = data.session?.access_token;
+        if (!accessToken) throw new Error("Your session expired. Please log in again.");
+        const response = await fetch("/api/shared-ports", {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ ports }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not sync shared ports.");
+      } catch (error) {
+        console.error("Could not sync shared ports:", error);
+        setSaveStatus("Ports saved locally - shared sync failed");
+      }
+    }, 700);
+
+    return () => clearTimeout(timer);
+  }, [ports, user?.id, sharedPortsLoaded]);
 
   function updateShipmentFilter(field, value) {
     setShipmentFilters((prev) => ({ ...prev, [field]: value }));
