@@ -6,7 +6,7 @@ import Login from "./Login";
 import { supabase } from "./supabase";
 import { DEFAULT_OPERATION_EMAIL, EMAILJS_PUBLIC_KEY, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, REMINDER_EMAIL_ENDPOINT } from "./config/email";
 import { defaultFxSettings, defaultShipments, defaultSuppliers, defaultWorldPorts, emptyBookingForm, emptyCustomerForm, emptyEditForm, emptyExpenseForm, emptyPaymentForm, emptyPortForm, emptyReceivableForm, emptySupplierForm, emptyTaskForm, emptyTransportForm, getLocalTodayDateKey, getLocationType, getNextCustomerId, getNextSupplierId } from "./data/defaults";
-import { addDays, buildReminderMessage, calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanSell, calcTotalCostUsd, dedupeShipments, getAgingReport, getCurrentMonthKey, getDateRangeLabel, getDaysLeft, getExpenses, getFinancialInvoices, getInvoicePaymentType, getMonthKey, getNextFinancialInvoiceNumber, getNextShipmentId, getPaymentSummary, getPayments, getRate, getReminderEventsForShipment, getReminderSentKey, getShipmentBillableQty, getShipmentDocuments, getShipmentFinancialLedger, getShipmentInternalNotes, getShipmentLoadDescription, getShipmentReportDate, getShipmentShareLinks, getShipmentUnitLabel, getTaskStatus, getTasks, getTransports, isAirShipment, isDateInRange, isFclShipment, isFullTruckShipment, isReminderAlreadySent, money, normalizeShipment, paymentAmountUsd, safeFileName, toDateKey } from "./utils/freight";
+import { addDays, buildReminderMessage, calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanSell, calcTotalCostUsd, dedupeShipments, getAgingReport, getCurrentMonthKey, getDateRangeLabel, getDaysLeft, getExpenses, getFinancialInvoices, getInvoicePaymentType, getMonthKey, getNextFinancialInvoiceNumber, getNextShipmentId, getPaymentSummary, getPayments, getRate, getReminderEventsForShipment, getReminderSentKey, getShipmentBillableQty, getShipmentDocuments, getShipmentFinancialLedger, getShipmentInternalNotes, getShipmentLoadDescription, getShipmentPaymentStatus, getShipmentReportDate, getShipmentShareLinks, getShipmentUnitLabel, getTaskStatus, getTasks, getTransports, isAirShipment, isDateInRange, isFclShipment, isFullTruckShipment, isReminderAlreadySent, money, normalizeShipment, paymentAmountUsd, safeFileName, toDateKey } from "./utils/freight";
 import { ownedTables, readOwnedRows, saveOwnedRows } from "./services/ownedStorage";
 import { getTitle } from "./utils/titles";
 import { DashboardScreen } from "./screens/DashboardScreen";
@@ -423,7 +423,8 @@ export default function App() {
 
   const filtered = useMemo(() => {
     return shipments.filter((s) => {
-      const text = `${s.id} ${s.customer} ${s.line} ${s.pol} ${s.pod} ${s.bookingNo} ${s.vessel} ${s.status} ${s.paymentStatus}`.toLowerCase();
+      const paymentStatus = getShipmentPaymentStatus(s, activeFxRate);
+      const text = `${s.id} ${s.customer} ${s.line} ${s.pol} ${s.pod} ${s.bookingNo} ${s.vessel} ${s.status} ${paymentStatus}`.toLowerCase();
       const matchesSearch = text.includes(query.toLowerCase());
       const matchesLegacyLine = lineFilter === "all" || s.line === lineFilter;
       const matchesFilters =
@@ -434,11 +435,11 @@ export default function App() {
         (!shipmentFilters.entryMonth || getMonthKey(getShipmentReportDate(s)) === shipmentFilters.entryMonth) &&
         (shipmentFilters.status === "all" || s.status === shipmentFilters.status) &&
         (shipmentFilters.cargoType === "all" || s.cargoType === shipmentFilters.cargoType) &&
-        (shipmentFilters.paymentStatus === "all" || s.paymentStatus === shipmentFilters.paymentStatus);
+        (shipmentFilters.paymentStatus === "all" || paymentStatus === shipmentFilters.paymentStatus);
 
       return matchesSearch && matchesLegacyLine && matchesFilters;
     });
-  }, [shipments, query, lineFilter, shipmentFilters]);
+  }, [shipments, query, lineFilter, shipmentFilters, activeFxRate]);
 
   const totals = useMemo(() => {
     return shipments.reduce(
@@ -452,7 +453,7 @@ export default function App() {
         acc.expenses += calcExpensesUsd(s);
         if (isFclShipment(s)) acc.fcl += Number(s.qty || 0);
         else acc.lcl += 1;
-        if ((s.paymentStatus || "").toLowerCase().includes("unpaid")) acc.unpaid += 1;
+        if (getShipmentPaymentStatus(s, activeFxRate) === "Unpaid") acc.unpaid += 1;
         if ((s.status || "").toLowerCase().includes("arrived")) acc.arrived += 1;
         if ((s.status || "").toLowerCase().includes("sea") || (s.status || "").toLowerCase().includes("transit")) acc.atSea += 1;
         return acc;
@@ -754,7 +755,7 @@ export default function App() {
       ETD: s.etd || "",
       ETA: s.eta || "",
       Status: s.status || "",
-      Payment: s.paymentStatus || "",
+      Payment: getShipmentPaymentStatus(s, activeFxRate),
       "Revenue USD": Number(calcOceanSell(s).toFixed(2)),
       "Costs USD": Number(calcTotalCostUsd(s, activeFxRate).toFixed(2)),
       "Gross Profit USD": Number(calcGrossProfit(s, activeFxRate).toFixed(2)),
@@ -790,7 +791,7 @@ export default function App() {
       ETD: s.etd || "",
       ETA: s.eta || "",
       Status: s.status || "",
-      Payment: s.paymentStatus || "",
+      Payment: getShipmentPaymentStatus(s, activeFxRate),
       "Customer Amount USD": Number(calcOceanSell(s).toFixed(2)),
     }));
   }
@@ -1054,7 +1055,7 @@ export default function App() {
         s.etd || "",
         s.eta || "",
         s.status || "",
-        s.paymentStatus || "",
+        getShipmentPaymentStatus(s, activeFxRate),
         money(calcOceanSell(s)),
       ]),
       styles: { fontSize: 7 },
@@ -1944,6 +1945,43 @@ export default function App() {
     if (updatedSelected) setSelectedShipment(updatedSelected);
   }
 
+  function ensureCustomerReceiptForStatus(shipment) {
+    const paymentsWithoutStatusReceipt = getPayments(shipment).filter((payment) => payment.source !== "paymentStatus");
+    if (shipment.paymentStatus !== "Fully Paid") {
+      return paymentsWithoutStatusReceipt.length === getPayments(shipment).length
+        ? shipment
+        : normalizeShipment({ ...shipment, payments: paymentsWithoutStatusReceipt });
+    }
+    if (paymentsWithoutStatusReceipt.some((payment) => payment.purchaseType === "Customer Receipt")) {
+      return paymentsWithoutStatusReceipt.length === getPayments(shipment).length
+        ? shipment
+        : normalizeShipment({ ...shipment, payments: paymentsWithoutStatusReceipt });
+    }
+
+    const amount = calcOceanSell(shipment);
+    if (!amount) return shipment;
+
+    const payment = {
+      id: `PAY-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      purchaseType: "Customer Receipt",
+      company: shipment.customer || "Customer",
+      amount,
+      taxRate: 0,
+      currency: "USD",
+      fxRate: Number(shipment.fx || activeFxRate || 1),
+      paidDate: getLocalTodayDateKey(),
+      note: "Auto-created from shipment payment status.",
+      source: "paymentStatus",
+      createdAt: new Date().toISOString(),
+      createdBy: user?.email || "system",
+    };
+
+    return normalizeShipment(withTimeline({
+      ...shipment,
+      payments: [payment, ...paymentsWithoutStatusReceipt],
+    }, createTimelineEvent("Payment", "Customer payment auto-created", `${shipment.id} | ${money(amount)}`)));
+  }
+
 function saveEditShipment(e) {
   e.preventDefault();
   if (!selectedShipment?.id) return;
@@ -1953,7 +1991,7 @@ function saveEditShipment(e) {
   const isAir = isAirShipment(draftShipment);
   const isFullTruck = isFullTruckShipment(draftShipment);
 
-  const updatedShipment = normalizeShipment(withTimeline({
+  const updatedShipment = ensureCustomerReceiptForStatus(normalizeShipment(withTimeline({
     ...selectedShipment,
     ...editForm,
     id: selectedShipment.id, // Never change shipment ID during editing.
@@ -1968,7 +2006,7 @@ function saveEditShipment(e) {
     bookingNo: editForm.bookingNo || "Not set",
     vessel: isAir ? "Not set" : editForm.vessel || "Not set",
     updatedAt: new Date().toISOString(),
-  }, createTimelineEvent("Shipment", "Shipment updated", `Status: ${selectedShipment.status || "Not set"} -> ${editForm.status || "Not set"}`)));
+  }, createTimelineEvent("Shipment", "Shipment updated", `Status: ${selectedShipment.status || "Not set"} -> ${editForm.status || "Not set"}`))));
 
   setShipments((prev) =>
     dedupeShipments(prev.map((s) => (s.id === selectedShipment.id ? updatedShipment : s)))
@@ -1992,7 +2030,7 @@ function addShipmentFromForm(e) {
       return;
     }
 
-    const newShipment = normalizeShipment({
+    const newShipment = ensureCustomerReceiptForStatus(normalizeShipment({
       id: getNextShipmentId(shipments),
       createdAt: new Date().toISOString(),
       entryDate: bookingForm.entryDate || getLocalTodayDateKey(),
@@ -2022,7 +2060,7 @@ function addShipmentFromForm(e) {
       payments: [],
       tasks: [],
       timeline: [createTimelineEvent("Shipment", "Shipment created", `${bookingForm.customer} | ${bookingForm.pol} -> ${bookingForm.pod}`)],
-    });
+    }));
 
     setShipments((prev) => dedupeShipments([newShipment, ...prev]));
     setBookingForm({ ...emptyBookingForm, entryDate: getLocalTodayDateKey() });

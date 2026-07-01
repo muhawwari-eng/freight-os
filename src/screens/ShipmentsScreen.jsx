@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { CustomerSelect, FormField, PortSelect } from "../components/freightComponents";
-import { calcNetProfit, calcOceanBuy, calcOceanSell, getDaysLeft, getMissingDocumentTypes, getPaymentSummary, getShipmentBillableQty, getShipmentCalendarEvents, getShipmentHealth, getShipmentLoadDescription, getShipmentUnitLabel, money } from "../utils/freight";
+import { calcNetProfit, calcOceanBuy, calcOceanSell, getDaysLeft, getMissingDocumentTypes, getPaymentSummary, getShipmentBillableQty, getShipmentCalendarEvents, getShipmentHealth, getShipmentLoadDescription, getShipmentPaymentStatus, getShipmentUnitLabel, money } from "../utils/freight";
 
 function SortHeader({ label, sortKey, sortConfig, onSort }) {
   const active = sortConfig.key === sortKey;
@@ -22,6 +22,7 @@ function getSortValue(shipment, key, activeFxRate) {
   if (key === "buy") return calcOceanBuy(shipment);
   if (key === "sell") return calcOceanSell(shipment);
   if (key === "profit") return calcNetProfit(shipment, activeFxRate);
+  if (key === "paymentStatus") return getShipmentPaymentStatus(shipment, activeFxRate);
   return shipment[key] || "";
 }
 
@@ -182,7 +183,7 @@ export function ShipmentsScreen({ resetShipmentFilters, query, setQuery, shipmen
                       {canSeeFinance && <td>{money(calcOceanBuy(s))}</td>}
                       {canSeeFinance && <td>{money(calcOceanSell(s))}</td>}
                       {canSeeFinance && <td><b>{money(calcNetProfit(s, activeFxRate))}</b></td>}
-                      <td><span className="paymentBadge">{s.paymentStatus}</span></td>
+                      <td><span className="paymentBadge">{getShipmentPaymentStatus(s, activeFxRate)}</span></td>
                       {role === "admin" && (
                         <td><button className="dangerBtn" onClick={(e) => { e.stopPropagation(); deleteShipment(s.id); }}>Delete</button></td>
                       )}

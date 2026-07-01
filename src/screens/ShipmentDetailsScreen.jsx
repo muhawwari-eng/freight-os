@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { CargoSelect, ContainerSelect, CustomerSelect, FormField, PaymentSelect, PaymentSummaryBox, PortSelect, StatusSelect, SupplierSelect } from "../components/freightComponents";
 import { generateInvoicePdf } from "../services/pdf";
-import { calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanBuy, calcOceanSell, calcTotalCostUsd, calcTransportTry, getExpenses, getMissingDocumentTypes, getPayments, getShipmentBillableQty, getShipmentDocuments, getShipmentFinancialLedger, getShipmentHealth, getShipmentInternalNotes, getShipmentLoadDescription, getShipmentShareLinks, getShipmentUnitLabel, getTaskStatus, getTasks, getTimelineEvents, getTransports, isAirShipment, isFclShipment, isFullTruckShipment, money, requiredShipmentDocumentTypes } from "../utils/freight";
+import { calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanBuy, calcOceanSell, calcTotalCostUsd, calcTransportTry, getExpenses, getMissingDocumentTypes, getPayments, getShipmentBillableQty, getShipmentDocuments, getShipmentFinancialLedger, getShipmentHealth, getShipmentInternalNotes, getShipmentLoadDescription, getShipmentPaymentStatus, getShipmentShareLinks, getShipmentUnitLabel, getTaskStatus, getTasks, getTimelineEvents, getTransports, isAirShipment, isFclShipment, isFullTruckShipment, money, requiredShipmentDocumentTypes } from "../utils/freight";
 
 const documentTypes = ["Bill of Lading", "Commercial Invoice", "Packing List", "Freight Invoice", "Customs", "Other"];
 
@@ -237,7 +237,7 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
                 <p><b>Billable Quantity:</b> {getShipmentBillableQty(selectedShipment)} {getShipmentUnitLabel(selectedShipment)}</p>
                 <p><b>Cut-Off:</b> {selectedShipment.cutOff || "Not set"}</p>
                 <p><b>ETD / ETA:</b> {selectedShipment.etd || "Not set"} / {selectedShipment.eta || "Not set"}</p>
-                <p><b>Payment:</b> {selectedShipment.paymentStatus}</p>
+                <p><b>Payment:</b> {getShipmentPaymentStatus(selectedShipment, activeFxRate)}</p>
                 <p><b>FX Rate:</b> {selectedShipment.fx || activeFxRate} TRY/USD</p>
               </div>
 

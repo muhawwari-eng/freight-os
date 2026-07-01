@@ -3,6 +3,7 @@ import {
   calcOceanSell,
   getShipmentDocuments,
   getShipmentLoadDescription,
+  getShipmentPaymentStatus,
   getShipmentShareLinks,
   normalizeShipment,
 } from "../src/utils/freight.js";
@@ -30,7 +31,7 @@ function buildPublicSharePayload(shipment, options = {}, token = "", sharedAt = 
     cargoType: normalized.cargoType,
     loadDescription: getShipmentLoadDescription(normalized),
     status: normalized.status,
-    paymentStatus: shareOptions.includePaymentStatus ? normalized.paymentStatus : "",
+    paymentStatus: shareOptions.includePaymentStatus ? getShipmentPaymentStatus(normalized, Number(normalized.fx || 1) || 1) : "",
     customerAmount: shareOptions.includeInvoiceAmount ? calcOceanSell(normalized) : null,
     cutOff: normalized.cutOff,
     etd: normalized.etd,
