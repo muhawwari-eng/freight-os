@@ -428,11 +428,11 @@ export function getShipmentFinancialLedger(shipment, exchangeRate) {
 }
 
 export function getPurchaseDueUsd(shipment, purchaseType, exchangeRate) {
-  if (purchaseType === "Customer Receipt") return calcOceanSell(shipment);
-  if (purchaseType === "Ocean Freight") return calcOceanBuy(shipment);
-  if (purchaseType === "Local Transport") return calcTransportTry(shipment) / getRate(shipment, exchangeRate);
-  if (purchaseType === "Expense") return calcExpensesUsd(shipment);
-  return 0;
+  const ledger = getShipmentFinancialLedger(shipment, exchangeRate);
+  if (purchaseType === "Customer Receipt") return ledger.salesTotal;
+  return ledger.purchaseRows
+    .filter((invoice) => getInvoicePaymentType(invoice) === purchaseType)
+    .reduce((sum, invoice) => sum + invoice.totalUsd, 0);
 }
 
 export function getPaidByTypeUsd(shipment, purchaseType, exchangeRate) {
@@ -607,19 +607,19 @@ export function getRate(shipment, exchangeRate) {
 }
 
 export function calcTotalCostUsd(shipment, exchangeRate) {
-  // Total cost = ocean buy + local transport converted to USD + extra expenses.
-  const transportUsd = calcTransportTry(shipment) / getRate(shipment, exchangeRate);
-  return calcOceanBuy(shipment) + transportUsd + calcExpensesUsd(shipment);
+  return getShipmentFinancialLedger(shipment, exchangeRate).purchasesTotal;
 }
 
 export function calcGrossProfit(shipment, exchangeRate) {
-  const transportUsd = calcTransportTry(shipment) / getRate(shipment, exchangeRate);
-  return calcOceanSell(shipment) - calcOceanBuy(shipment) - transportUsd;
+  const ledger = getShipmentFinancialLedger(shipment, exchangeRate);
+  const directPurchases = ledger.purchaseRows
+    .filter((row) => ["Ocean Freight", "Local Transport"].includes(row.category))
+    .reduce((sum, row) => sum + row.totalUsd, 0);
+  return ledger.salesTotal - directPurchases;
 }
 
 export function calcNetProfit(shipment, exchangeRate) {
-  // Net profit deducts extra expenses from gross profit.
-  return calcGrossProfit(shipment, exchangeRate) - calcExpensesUsd(shipment);
+  return getShipmentFinancialLedger(shipment, exchangeRate).expectedProfit;
 }
 
 export function calcMargin(shipment, exchangeRate) {

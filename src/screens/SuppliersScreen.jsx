@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { FormField } from "../components/freightComponents";
-import { calcTotalCostUsd, getExpenses, getTransports, money } from "../utils/freight";
+import { getExpenses, getShipmentFinancialLedger, getTransports, money } from "../utils/freight";
 
 const companyTabs = [
   { key: "Shipping Line", label: "Shipping Lines", types: ["Shipping Line"] },
@@ -21,9 +21,12 @@ export function SuppliersScreen({ canEditCore, addSupplier, supplierForm, update
     const carrierShipments = shipments.filter((shipment) => shipment.line === name);
     const expenseRows = shipments.flatMap((shipment) => getExpenses(shipment).filter((expense) => expense.company === name).map((expense) => ({ shipment, expense })));
     const transportRows = shipments.flatMap((shipment) => getTransports(shipment).filter((transport) => transport.company === name).map((transport) => ({ shipment, transport })));
-    const carrierCost = carrierShipments.reduce((sum, shipment) => sum + calcTotalCostUsd(shipment, activeFxRate), 0);
+    const invoiceRows = shipments.flatMap((shipment) => getShipmentFinancialLedger(shipment, activeFxRate).purchaseRows
+      .filter((invoice) => String(invoice.party || "").trim().toLowerCase() === name.trim().toLowerCase())
+      .map((invoice) => ({ shipment, invoice })));
+    const carrierCost = invoiceRows.reduce((sum, row) => sum + row.invoice.totalUsd, 0);
     const expenseCost = expenseRows.reduce((sum, row) => sum + Number(row.expense.amountUsd || 0), 0);
-    return { carrierShipments, expenseRows, transportRows, carrierCost, expenseCost, totalActivity: carrierShipments.length + expenseRows.length + transportRows.length };
+    return { carrierShipments, expenseRows, transportRows, invoiceRows, carrierCost, expenseCost, totalActivity: carrierShipments.length + expenseRows.length + transportRows.length + invoiceRows.length };
   }
 
   const categoryCompanies = suppliers.filter((supplier) => activeTab.types.includes(supplier.type || "Other"));

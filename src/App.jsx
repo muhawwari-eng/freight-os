@@ -964,15 +964,17 @@ export default function App() {
       customer.profit += calcNetProfit(shipment, activeFxRate);
       customersMap.set(customerKey, customer);
 
-      const supplierKey = shipment.line || "Unknown Supplier";
-      const supplier = suppliersMap.get(supplierKey) || { name: supplierKey, shipments: 0, cost: 0 };
-      supplier.shipments += 1;
-      supplier.cost += calcTotalCostUsd(shipment, activeFxRate);
-      suppliersMap.set(supplierKey, supplier);
+      getShipmentFinancialLedger(shipment, activeFxRate).purchaseRows.forEach((invoice) => {
+        const supplierKey = invoice.party || shipment.line || invoice.category || "Unknown Supplier";
+        const supplier = suppliersMap.get(supplierKey) || { name: supplierKey, shipments: new Set(), cost: 0 };
+        supplier.shipments.add(shipment.id);
+        supplier.cost += invoice.totalUsd;
+        suppliersMap.set(supplierKey, supplier);
+      });
     });
     return {
       customers: Array.from(customersMap.values()).sort((a, b) => b.profit - a.profit).slice(0, 10),
-      suppliers: Array.from(suppliersMap.values()).sort((a, b) => b.cost - a.cost).slice(0, 10),
+      suppliers: Array.from(suppliersMap.values()).map((row) => ({ ...row, shipments: row.shipments.size })).sort((a, b) => b.cost - a.cost).slice(0, 10),
     };
   }, [reportData.shipments, activeFxRate]);
 
