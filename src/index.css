@@ -1384,6 +1384,44 @@ tr:hover {
   gap: 22px;
 }
 
+.shipmentInvoiceGrid,
+.shipmentInvoiceCard {
+  min-width: 0;
+}
+
+.shipmentInvoiceCard .tableWrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.shipmentInvoiceCard table {
+  table-layout: fixed;
+  min-width: 640px;
+}
+
+.shipmentInvoiceCard th,
+.shipmentInvoiceCard td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+.shipmentInvoiceCard th:first-child,
+.shipmentInvoiceCard td:first-child,
+.shipmentInvoiceCard th:nth-child(2),
+.shipmentInvoiceCard td:nth-child(2) {
+  width: 24%;
+}
+
+.shipmentInvoiceCard th:nth-child(4),
+.shipmentInvoiceCard td:nth-child(4),
+.shipmentInvoiceCard th:nth-child(5),
+.shipmentInvoiceCard td:nth-child(5),
+.shipmentInvoiceCard th:nth-child(6),
+.shipmentInvoiceCard td:nth-child(6) {
+  width: 12%;
+}
+
 .detailGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1517,6 +1555,12 @@ tr:hover {
 .emptyState p {
   color: #93c5fd;
   margin: 6px 0 0;
+}
+
+@media (max-width: 1300px) {
+  .shipmentInvoiceGrid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 1100px) {

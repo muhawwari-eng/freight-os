@@ -46,7 +46,7 @@ function DetailSubtabs({ activeTab, setActiveTab, canSeeFinance }) {
 
 function ShipmentInvoiceTable({ title, rows }) {
   return (
-    <div className="note">
+    <div className="note shipmentInvoiceCard">
       <h3>{title}</h3>
       {rows.length === 0 ? (
         <p>No invoices recorded.</p>
@@ -282,7 +282,7 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
               </div>
               <PaymentSummaryBox shipment={selectedShipment} exchangeRate={activeFxRate} />
 
-              <div className="twoCols mt">
+              <div className="twoCols mt shipmentInvoiceGrid">
                 <ShipmentInvoiceTable title="Sales Invoices" rows={financialLedger?.saleRows || []} />
                 <ShipmentInvoiceTable title="Purchase Invoices" rows={financialLedger?.purchaseRows || []} />
               </div>
