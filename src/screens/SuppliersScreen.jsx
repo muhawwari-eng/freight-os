@@ -18,15 +18,25 @@ export function SuppliersScreen({ canEditCore, addSupplier, supplierForm, update
 
   function getSupplierProfile(supplier) {
     const name = supplier.name || "";
-    const carrierShipments = shipments.filter((shipment) => shipment.line === name);
-    const expenseRows = shipments.flatMap((shipment) => getExpenses(shipment).filter((expense) => expense.company === name).map((expense) => ({ shipment, expense })));
-    const transportRows = shipments.flatMap((shipment) => getTransports(shipment).filter((transport) => transport.company === name).map((transport) => ({ shipment, transport })));
+    const normalizedName = name.trim().toLowerCase();
+    const carrierShipments = shipments.filter((shipment) => String(shipment.line || "").trim().toLowerCase() === normalizedName);
+    const expenseRows = shipments.flatMap((shipment) => getExpenses(shipment)
+      .filter((expense) => String(expense.company || "").trim().toLowerCase() === normalizedName)
+      .map((expense) => ({ shipment, expense })));
+    const transportRows = shipments.flatMap((shipment) => getTransports(shipment)
+      .filter((transport) => String(transport.company || "").trim().toLowerCase() === normalizedName)
+      .map((transport) => ({ shipment, transport })));
     const invoiceRows = shipments.flatMap((shipment) => getShipmentFinancialLedger(shipment, activeFxRate).purchaseRows
-      .filter((invoice) => String(invoice.party || "").trim().toLowerCase() === name.trim().toLowerCase())
+      .filter((invoice) => String(invoice.party || "").trim().toLowerCase() === normalizedName)
       .map((invoice) => ({ shipment, invoice })));
+    const activityShipments = Array.from(new Map([
+      ...carrierShipments.map((shipment) => [shipment.id, shipment]),
+      ...transportRows.map((row) => [row.shipment.id, row.shipment]),
+      ...invoiceRows.map((row) => [row.shipment.id, row.shipment]),
+    ]).values());
     const carrierCost = invoiceRows.reduce((sum, row) => sum + row.invoice.totalUsd, 0);
     const expenseCost = expenseRows.reduce((sum, row) => sum + Number(row.expense.amountUsd || 0), 0);
-    return { carrierShipments, expenseRows, transportRows, invoiceRows, carrierCost, expenseCost, totalActivity: carrierShipments.length + expenseRows.length + transportRows.length + invoiceRows.length };
+    return { carrierShipments, expenseRows, transportRows, invoiceRows, activityShipments, carrierCost, expenseCost, totalActivity: carrierShipments.length + expenseRows.length + transportRows.length + invoiceRows.length };
   }
 
   const categoryCompanies = suppliers.filter((supplier) => activeTab.types.includes(supplier.type || "Other"));
@@ -115,12 +125,12 @@ export function SuppliersScreen({ canEditCore, addSupplier, supplierForm, update
                 <p>{supplier.email || "No email"}{supplier.phone ? ` | ${supplier.phone}` : ""}</p>
                 {supplier.note && <p>{supplier.note}</p>}
                 <div className="customer360Metrics">
-                  <span><small>Carrier Files</small><b>{profile.carrierShipments.length}</b></span>
+                  <span><small>Files</small><b>{profile.activityShipments.length}</b></span>
                   <span><small>Transport</small><b>{profile.transportRows.length}</b></span>
                   <span><small>Cost</small><b>{money(profile.carrierCost + profile.expenseCost)}</b></span>
                 </div>
                 <div className="customerShipments">
-                  {profile.carrierShipments.slice(0, 3).map((shipment) => <button key={shipment.id} type="button" onClick={() => openShipmentDetails?.(shipment)}>{shipment.id} | {shipment.customer} | {shipment.status}</button>)}
+                  {profile.activityShipments.slice(0, 3).map((shipment) => <button key={shipment.id} type="button" onClick={() => openShipmentDetails?.(shipment)}>{shipment.id} | {shipment.customer} | {shipment.status}</button>)}
                 </div>
                 {role === "admin" && <button className="dangerBtn mt" onClick={() => deleteSupplier(supplier.id)}>Delete</button>}
               </div>

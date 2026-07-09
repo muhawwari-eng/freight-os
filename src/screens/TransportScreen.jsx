@@ -5,6 +5,7 @@ import { calcSingleTransportTry, getTransports, money } from "../utils/freight";
 export function TransportScreen({ addTransportToShipment, transportForm, updateTransport, shipments, suppliers, deleteTransport, canSeeFinance }) {
   const [query, setQuery] = useState("");
   const [companyFilter, setCompanyFilter] = useState("all");
+  const companyOptionsId = "local-transport-company-options";
 
   const transportRows = useMemo(() => shipments.flatMap((shipment) => getTransports(shipment).map((transport, index) => ({
     shipment,
@@ -55,12 +56,12 @@ export function TransportScreen({ addTransportToShipment, transportForm, updateT
             <div className="formGrid one">
               <FormField label="Shipment"><select value={transportForm.shipmentId} onChange={(e) => updateTransport("shipmentId", e.target.value)}><option value="">Select Shipment</option>{shipments.map((shipment) => <option key={shipment.id} value={shipment.id}>{shipment.id} - {shipment.customer}</option>)}</select></FormField>
               <FormField label="Transport Company">
-                <select value={transportForm.company} onChange={(e) => updateTransport("company", e.target.value)}>
-                  <option value="">Select Local Transport Company</option>
-                  {localTransportCompanies.map((company) => <option key={company.id} value={company.name}>{company.name}</option>)}
-                </select>
+                <input list={companyOptionsId} value={transportForm.company} onChange={(e) => updateTransport("company", e.target.value)} placeholder="Select or type company" />
+                <datalist id={companyOptionsId}>
+                  {localTransportCompanies.map((company) => <option key={company.id} value={company.name} />)}
+                </datalist>
               </FormField>
-              {localTransportCompanies.length === 0 && <p className="smallText">Add a company under Companies &gt; Local Transport first.</p>}
+              <p className="smallText">New names are added automatically under Companies &gt; Local Transport.</p>
               <FormField label="From"><input value={transportForm.from} onChange={(e) => updateTransport("from", e.target.value)} /></FormField>
               <FormField label="To"><input value={transportForm.to} onChange={(e) => updateTransport("to", e.target.value)} /></FormField>
               <FormField label="Truck Quantity"><input type="number" min="1" value={transportForm.truckQty} onChange={(e) => updateTransport("truckQty", e.target.value)} /></FormField>

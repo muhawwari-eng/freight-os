@@ -37,6 +37,19 @@ function decodeSharePayload(value) {
   }
 }
 
+function buildLocalTransportSupplier(name, note = "Added automatically from Local Transport records.") {
+  return {
+    id: getNextSupplierId(),
+    name,
+    type: "Local Transport",
+    contact: "",
+    phone: "",
+    email: "",
+    country: "",
+    note,
+  };
+}
+
 export default function App() {
   const [shipments, setShipments] = useState([]);
 
@@ -374,6 +387,33 @@ export default function App() {
 
     return () => clearTimeout(timer);
   }, [suppliers, user?.id, sharedSuppliersLoaded]);
+
+  useEffect(() => {
+    if (!sharedSuppliersLoaded || shipments.length === 0) return;
+
+    const knownNames = new Set(suppliers.map((supplier) => String(supplier.name || "").trim().toLowerCase()).filter(Boolean));
+    const missingNames = [];
+
+    shipments.forEach((shipment) => {
+      getTransports(shipment).forEach((transport) => {
+        const name = String(transport.company || "").trim();
+        const normalizedName = name.toLowerCase();
+        if (!name || knownNames.has(normalizedName)) return;
+        knownNames.add(normalizedName);
+        missingNames.push(name);
+      });
+    });
+
+    if (missingNames.length === 0) return;
+    const timer = setTimeout(() => {
+      setSuppliers((prev) => [
+        ...missingNames.map((name) => buildLocalTransportSupplier(name, "Linked automatically from existing Local Transport records.")),
+        ...prev,
+      ]);
+    }, 0);
+
+    return () => clearTimeout(timer);
+  }, [shipments, suppliers, sharedSuppliersLoaded]);
 
   useEffect(() => {
     if (!user?.id || !sharedPortsLoaded) return;
@@ -1645,6 +1685,16 @@ export default function App() {
     setSuppliers((prev) => prev.filter((s) => s.id !== id));
   }
 
+  function ensureLocalTransportCompany(companyName) {
+    const name = String(companyName || "").trim();
+    if (!name) return;
+    const normalizedName = name.toLowerCase();
+    setSuppliers((prev) => {
+      const exists = prev.some((supplier) => String(supplier.name || "").trim().toLowerCase() === normalizedName);
+      return exists ? prev : [buildLocalTransportSupplier(name), ...prev];
+    });
+  }
+
   function addPort(e) {
     e.preventDefault();
     if (!portForm.code.trim() || !portForm.name.trim()) {
@@ -2077,7 +2127,7 @@ function addShipmentFromForm(e) {
     }
 
     const newTransport = {
-      company: transportForm.company,
+      company: transportForm.company.trim(),
       from: transportForm.from,
       to: transportForm.to,
       truckQty: Number(transportForm.truckQty || 1),
@@ -2085,6 +2135,8 @@ function addShipmentFromForm(e) {
       taxRate: Number(transportForm.taxRate || 0),
       note: transportForm.note,
     };
+
+    ensureLocalTransportCompany(newTransport.company);
 
     setShipments((prev) =>
       prev.map((s) =>
