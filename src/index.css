@@ -1103,7 +1103,29 @@ td {
 }
 
 .financeShipmentPicker {
-  max-width: 560px;
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.financePickerFilters {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(240px, 1.4fr) repeat(3, minmax(160px, 1fr));
+  margin-bottom: 12px;
+}
+
+.financePickerFooter {
+  align-items: center;
+  color: #8fb3d9;
+  display: flex;
+  font-size: 13px;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+
+.financePickerFooter .ghostBtn {
+  padding: 8px 12px;
 }
 
 .financeFileHead {
@@ -1741,5 +1763,15 @@ button:disabled {
 @media (max-width: 1100px) {
   .filtersGrid {
     grid-template-columns: 1fr;
+  }
+
+  .financePickerFilters {
+    grid-template-columns: 1fr;
+  }
+
+  .financePickerFooter {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
   }
 }

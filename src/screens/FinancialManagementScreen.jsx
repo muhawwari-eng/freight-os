@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { FormField } from "../components/freightComponents";
 import { emptyFinancialInvoiceForm, emptyFinancialPaymentForm, getLocalTodayDateKey } from "../data/defaults";
 import { generateInvoicePdf, generateProfitReportPdf } from "../services/pdf";
@@ -20,6 +20,10 @@ function amountInCurrency(amountUsd, currency, fxRate) {
   const amount = Number(amountUsd || 0);
   if (currency !== "USD") return amount * (Number(fxRate || 1) || 1);
   return amount;
+}
+
+function shipmentMonth(shipment) {
+  return String(shipment.entryDate || shipment.etd || shipment.eta || "").slice(0, 7);
 }
 
 function InvoiceTable({ title, rows, canManagePayments, onEdit, onDelete }) {
@@ -81,6 +85,7 @@ function InvoiceTable({ title, rows, canManagePayments, onEdit, onDelete }) {
 
 export function FinancialManagementScreen({ shipments, customers, suppliers, activeFxRate, canManagePayments, saveFinancialInvoice, deleteFinancialInvoice, addInvoicePayment, assignInvoicePayment }) {
   const [selectedShipmentId, setSelectedShipmentId] = useState("");
+  const [shipmentPickerFilters, setShipmentPickerFilters] = useState({ query: "", month: "", status: "all", customer: "all" });
   const [invoiceForm, setInvoiceForm] = useState(() => newInvoiceForm(activeFxRate));
   const [editingInvoiceId, setEditingInvoiceId] = useState(null);
   const [replacingCalculatedInvoice, setReplacingCalculatedInvoice] = useState(false);
@@ -88,7 +93,33 @@ export function FinancialManagementScreen({ shipments, customers, suppliers, act
   const [paymentForm, setPaymentForm] = useState(() => newPaymentForm(activeFxRate));
   const [allocationTargets, setAllocationTargets] = useState({});
 
-  const shipmentId = selectedShipmentId || shipments[0]?.id || "";
+  const sortedShipmentOptions = useMemo(() => {
+    return [...shipments].sort((left, right) => {
+      const leftDate = left.entryDate || left.etd || left.eta || "";
+      const rightDate = right.entryDate || right.etd || right.eta || "";
+      if (leftDate !== rightDate) return String(rightDate).localeCompare(String(leftDate));
+      return String(right.id || "").localeCompare(String(left.id || ""), undefined, { numeric: true, sensitivity: "base" });
+    });
+  }, [shipments]);
+  const customerOptions = useMemo(() => {
+    return [...new Set(shipments.map((item) => item.customer).filter(Boolean))].sort((left, right) => String(left).localeCompare(String(right), undefined, { sensitivity: "base" }));
+  }, [shipments]);
+  const statusOptions = useMemo(() => {
+    return [...new Set(shipments.map((item) => item.status).filter(Boolean))].sort((left, right) => String(left).localeCompare(String(right), undefined, { sensitivity: "base" }));
+  }, [shipments]);
+  const filteredShipmentOptions = useMemo(() => {
+    const text = shipmentPickerFilters.query.trim().toLowerCase();
+    return sortedShipmentOptions.filter((item) => {
+      const matchesText = !text || [item.id, item.customer, item.bookingNo, item.vessel, item.pol, item.pod, item.line, item.status, item.entryDate]
+        .some((value) => String(value || "").toLowerCase().includes(text));
+      const matchesMonth = !shipmentPickerFilters.month || shipmentMonth(item) === shipmentPickerFilters.month;
+      const matchesStatus = shipmentPickerFilters.status === "all" || item.status === shipmentPickerFilters.status;
+      const matchesCustomer = shipmentPickerFilters.customer === "all" || item.customer === shipmentPickerFilters.customer;
+      return matchesText && matchesMonth && matchesStatus && matchesCustomer;
+    });
+  }, [shipmentPickerFilters, sortedShipmentOptions]);
+  const selectedShipmentVisible = filteredShipmentOptions.some((item) => item.id === selectedShipmentId);
+  const shipmentId = selectedShipmentVisible ? selectedShipmentId : filteredShipmentOptions[0]?.id || "";
   const shipment = shipments.find((item) => item.id === shipmentId);
   const ledger = shipment ? getShipmentFinancialLedger(shipment, activeFxRate) : null;
   const invoiceNumber = editingInvoiceId
@@ -203,6 +234,14 @@ export function FinancialManagementScreen({ shipments, customers, suppliers, act
     setAllocationTargets({});
   }
 
+  function updateShipmentPickerFilter(field, value) {
+    setShipmentPickerFilters((previous) => ({ ...previous, [field]: value }));
+  }
+
+  function clearShipmentPickerFilters() {
+    setShipmentPickerFilters({ query: "", month: "", status: "all", customer: "all" });
+  }
+
   return (
     <section className="panel financeManagement">
       <div className="panelHead">
@@ -219,13 +258,33 @@ export function FinancialManagementScreen({ shipments, customers, suppliers, act
       </div>
 
       <div className="financeShipmentPicker">
-        <FormField label="Shipment File">
+        <div className="financePickerFilters">
+          <FormField label="Search File"><input value={shipmentPickerFilters.query} onChange={(event) => updateShipmentPickerFilter("query", event.target.value)} placeholder="Shipment, customer, booking, route..." /></FormField>
+          <FormField label="Entry Month"><input type="month" value={shipmentPickerFilters.month} onChange={(event) => updateShipmentPickerFilter("month", event.target.value)} /></FormField>
+          <FormField label="Customer">
+            <select value={shipmentPickerFilters.customer} onChange={(event) => updateShipmentPickerFilter("customer", event.target.value)}>
+              <option value="all">All Customers</option>
+              {customerOptions.map((customer) => <option key={customer} value={customer}>{customer}</option>)}
+            </select>
+          </FormField>
+          <FormField label="Status">
+            <select value={shipmentPickerFilters.status} onChange={(event) => updateShipmentPickerFilter("status", event.target.value)}>
+              <option value="all">All Statuses</option>
+              {statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+            </select>
+          </FormField>
+        </div>
+        <FormField label={`Shipment File (${filteredShipmentOptions.length} found)`}>
           <select value={shipmentId} onChange={selectShipment}>
-            {shipments.map((item) => (
-              <option key={item.id} value={item.id}>{item.id} - {item.customer} - {item.bookingNo || "Not set"}</option>
+            {filteredShipmentOptions.map((item) => (
+              <option key={item.id} value={item.id}>{item.id} - {item.customer} - {item.bookingNo || "Not set"} - {item.entryDate || "No date"}</option>
             ))}
           </select>
         </FormField>
+        <div className="financePickerFooter">
+          <span>Sorted by newest entry date.</span>
+          <button className="ghostBtn" type="button" onClick={clearShipmentPickerFilters}>Clear Filters</button>
+        </div>
       </div>
 
       {!shipment && <div className="note"><p>No shipments available.</p></div>}
