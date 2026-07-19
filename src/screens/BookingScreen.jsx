@@ -1,6 +1,6 @@
 import { ContainerSelect, CustomerSelect, FormField, PaymentSelect, PortSelect, StatusSelect, SupplierSelect } from "../components/freightComponents";
 import { getLocationType } from "../data/defaults";
-import { getShipmentUnitLabel, isAirShipment, isFclShipment, isFullTruckShipment } from "../utils/freight";
+import { isAirShipment, isFclShipment, isFullTruckShipment } from "../utils/freight";
 
 const shipmentModes = [
   { key: "Sea", title: "Sea", description: "FCL containers or LCL sea cargo", cargoType: "FCL" },
@@ -25,7 +25,7 @@ function BookingSection({ title, children }) {
   );
 }
 
-export function BookingScreen({ addShipmentFromForm, bookingForm, customers, updateBooking, suppliers, ports, activeFxRate }) {
+export function BookingScreen({ addShipmentFromForm, bookingForm, customers, updateBooking, suppliers, ports }) {
   const mode = getModeFromCargo(bookingForm.cargoType);
   const isFcl = isFclShipment(bookingForm);
   const isAir = isAirShipment(bookingForm);
@@ -33,7 +33,6 @@ export function BookingScreen({ addShipmentFromForm, bookingForm, customers, upd
   const isSea = mode === "Sea";
   const isRoad = mode === "Road";
   const isCross = mode === "Cross";
-  const unitLabel = getShipmentUnitLabel(bookingForm);
   const routeLocations = ports.filter((location) => {
     const type = getLocationType(location);
     if (isAir) return type === "Airport";
@@ -118,12 +117,6 @@ export function BookingScreen({ addShipmentFromForm, bookingForm, customers, upd
           {!isFcl && !isFullTruck && !isAir && <FormField label="CBM"><input type="number" min="0" step="0.001" value={bookingForm.cbm} onChange={(e) => updateBooking("cbm", e.target.value)} required /></FormField>}
           {!isFcl && !isFullTruck && <FormField label="Actual Weight KG"><input type="number" min="0" step="0.01" value={bookingForm.actualWeightKg} onChange={(e) => updateBooking("actualWeightKg", e.target.value)} /></FormField>}
           {isAir && <FormField label="Volumetric Weight KG"><input type="number" min="0" step="0.01" value={bookingForm.volumetricWeightKg} onChange={(e) => updateBooking("volumetricWeightKg", e.target.value)} /></FormField>}
-        </BookingSection>
-
-        <BookingSection title="Pricing">
-          <FormField label={`Buy Price / ${unitLabel} USD`}><input type="number" min="0" step="0.01" value={bookingForm.buyUsd} onChange={(e) => updateBooking("buyUsd", e.target.value)} /></FormField>
-          <FormField label={`Sell Price / ${unitLabel} USD`}><input type="number" min="0" step="0.01" value={bookingForm.sellUsd} onChange={(e) => updateBooking("sellUsd", e.target.value)} /></FormField>
-          <FormField label="Active FX Rate TRY/USD"><input value={activeFxRate} disabled /></FormField>
         </BookingSection>
 
         <BookingSection title="Schedule & Status">

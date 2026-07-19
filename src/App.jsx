@@ -6,7 +6,7 @@ import Login from "./Login";
 import { supabase } from "./supabase";
 import { DEFAULT_OPERATION_EMAIL, EMAILJS_PUBLIC_KEY, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, REMINDER_EMAIL_ENDPOINT } from "./config/email";
 import { defaultFxSettings, defaultShipments, defaultSuppliers, defaultWorldPorts, emptyBookingForm, emptyCustomerForm, emptyEditForm, emptyExpenseForm, emptyPaymentForm, emptyPortForm, emptyReceivableForm, emptySupplierForm, emptyTaskForm, emptyTransportForm, getLocalTodayDateKey, getLocationType, getNextCustomerId, getNextSupplierId } from "./data/defaults";
-import { addDays, buildReminderMessage, calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanSell, calcTotalCostUsd, dedupeShipments, getAgingReport, getCurrentMonthKey, getDateRangeLabel, getDaysLeft, getExpenses, getFinancialInvoices, getInvoicePaymentType, getMonthKey, getNextFinancialInvoiceNumber, getNextShipmentId, getPaymentSummary, getPayments, getRate, getReminderEventsForShipment, getReminderSentKey, getShipmentBillableQty, getShipmentDocuments, getShipmentFinancialLedger, getShipmentInternalNotes, getShipmentLoadDescription, getShipmentPaymentStatus, getShipmentReportDate, getShipmentShareLinks, getShipmentUnitLabel, getTaskStatus, getTasks, getTransports, isAirShipment, isDateInRange, isFclShipment, isFullTruckShipment, isReminderAlreadySent, money, normalizeShipment, paymentAmountUsd, safeFileName, toDateKey } from "./utils/freight";
+import { addDays, buildReminderMessage, calcExpensesUsd, calcGrossProfit, calcNetProfit, calcSalesUsd, calcTotalCostUsd, dedupeShipments, getAgingReport, getCurrentMonthKey, getDateRangeLabel, getDaysLeft, getExpenses, getFinancialInvoices, getInvoicePaymentType, getMonthKey, getNextFinancialInvoiceNumber, getNextShipmentId, getPaymentSummary, getPayments, getRate, getReminderEventsForShipment, getReminderSentKey, getShipmentBillableQty, getShipmentDocuments, getShipmentFinancialLedger, getShipmentInternalNotes, getShipmentLoadDescription, getShipmentPaymentStatus, getShipmentReportDate, getShipmentShareLinks, getShipmentUnitLabel, getTaskStatus, getTasks, getTransports, isAirShipment, isDateInRange, isFclShipment, isFullTruckShipment, isReminderAlreadySent, money, normalizeShipment, paymentAmountUsd, safeFileName, toDateKey } from "./utils/freight";
 import { ownedTables, readOwnedRows, saveOwnedRows } from "./services/ownedStorage";
 import { getTitle } from "./utils/titles";
 import { DashboardScreen } from "./screens/DashboardScreen";
@@ -486,7 +486,7 @@ export default function App() {
       (acc, s) => {
         acc.shipments += 1;
         acc.containers += getShipmentBillableQty(s);
-        acc.revenue += calcOceanSell(s);
+        acc.revenue += calcSalesUsd(s, activeFxRate);
         acc.costs += calcTotalCostUsd(s, activeFxRate);
         acc.grossProfit += calcGrossProfit(s, activeFxRate);
         acc.netProfit += calcNetProfit(s, activeFxRate);
@@ -701,7 +701,7 @@ export default function App() {
       monthlyProfitMap.set(shipmentMonth, (monthlyProfitMap.get(shipmentMonth) || 0) + calcNetProfit(shipment, activeFxRate));
 
       const customer = shipment.customer || "Unknown Customer";
-      topCustomersMap.set(customer, (topCustomersMap.get(customer) || 0) + calcOceanSell(shipment));
+      topCustomersMap.set(customer, (topCustomersMap.get(customer) || 0) + calcSalesUsd(shipment, activeFxRate));
 
       getExpenses(shipment).forEach((expense) => {
         const company = expense.company || "Not set";
@@ -735,7 +735,7 @@ export default function App() {
       (acc, s) => {
         acc.shipments += 1;
         acc.containers += getShipmentBillableQty(s);
-        acc.revenue += calcOceanSell(s);
+        acc.revenue += calcSalesUsd(s, activeFxRate);
         acc.costs += calcTotalCostUsd(s, activeFxRate);
         acc.grossProfit += calcGrossProfit(s, activeFxRate);
         acc.expenses += calcExpensesUsd(s);
@@ -752,7 +752,7 @@ export default function App() {
       const customerKey = s.customer || "Unknown Customer";
       const customerRow = customersMap.get(customerKey) || { name: customerKey, shipments: 0, revenue: 0, netProfit: 0 };
       customerRow.shipments += 1;
-      customerRow.revenue += calcOceanSell(s);
+      customerRow.revenue += calcSalesUsd(s, activeFxRate);
       customerRow.netProfit += calcNetProfit(s, activeFxRate);
       customersMap.set(customerKey, customerRow);
 
@@ -796,7 +796,7 @@ export default function App() {
       ETA: s.eta || "",
       Status: s.status || "",
       Payment: getShipmentPaymentStatus(s, activeFxRate),
-      "Revenue USD": Number(calcOceanSell(s).toFixed(2)),
+      "Revenue USD": Number(calcSalesUsd(s, activeFxRate).toFixed(2)),
       "Costs USD": Number(calcTotalCostUsd(s, activeFxRate).toFixed(2)),
       "Gross Profit USD": Number(calcGrossProfit(s, activeFxRate).toFixed(2)),
       "Expenses USD": Number(calcExpensesUsd(s).toFixed(2)),
@@ -832,7 +832,7 @@ export default function App() {
       ETA: s.eta || "",
       Status: s.status || "",
       Payment: getShipmentPaymentStatus(s, activeFxRate),
-      "Customer Amount USD": Number(calcOceanSell(s).toFixed(2)),
+      "Customer Amount USD": Number(calcSalesUsd(s, activeFxRate).toFixed(2)),
     }));
   }
 
@@ -895,7 +895,7 @@ export default function App() {
         s.line,
         `${s.pol} → ${s.pod}`,
         s.status,
-        money(calcOceanSell(s)),
+        money(calcSalesUsd(s, activeFxRate)),
         money(calcTotalCostUsd(s, activeFxRate)),
         money(calcNetProfit(s, activeFxRate)),
       ]),
@@ -1000,7 +1000,7 @@ export default function App() {
       const customerKey = shipment.customer || "Unknown Customer";
       const customer = customersMap.get(customerKey) || { name: customerKey, shipments: 0, revenue: 0, profit: 0 };
       customer.shipments += 1;
-      customer.revenue += calcOceanSell(shipment);
+      customer.revenue += calcSalesUsd(shipment, activeFxRate);
       customer.profit += calcNetProfit(shipment, activeFxRate);
       customersMap.set(customerKey, customer);
 
@@ -1098,7 +1098,7 @@ export default function App() {
         s.eta || "",
         s.status || "",
         getShipmentPaymentStatus(s, activeFxRate),
-        money(calcOceanSell(s)),
+        money(calcSalesUsd(s, activeFxRate)),
       ]),
       styles: { fontSize: 7 },
       headStyles: { fontSize: 7 },
@@ -1820,8 +1820,6 @@ export default function App() {
       actualWeightKg: String(selectedShipment.actualWeightKg || ""),
       volumetricWeightKg: String(selectedShipment.volumetricWeightKg || ""),
       packageCount: String(selectedShipment.packageCount || ""),
-      buyUsd: String(selectedShipment.buyUsd || ""),
-      sellUsd: String(selectedShipment.sellUsd || ""),
       bookingNo: selectedShipment.bookingNo === "Not set" ? "" : selectedShipment.bookingNo,
       vessel: selectedShipment.vessel === "Not set" ? "" : selectedShipment.vessel,
     });
@@ -2010,7 +2008,7 @@ export default function App() {
         : normalizeShipment({ ...shipment, payments: paymentsWithoutStatusReceipt });
     }
 
-    const amount = calcOceanSell(shipment);
+    const amount = calcSalesUsd(shipment, activeFxRate);
     if (!amount) return shipment;
 
     const payment = {
@@ -2053,8 +2051,6 @@ function saveEditShipment(e) {
     actualWeightKg: editForm.actualWeightKg,
     volumetricWeightKg: editForm.volumetricWeightKg,
     packageCount: editForm.packageCount,
-    buyUsd: Number(editForm.buyUsd || 0),
-    sellUsd: Number(editForm.sellUsd || 0),
     bookingNo: editForm.bookingNo || "Not set",
     vessel: isAir ? "Not set" : editForm.vessel || "Not set",
     updatedAt: new Date().toISOString(),
@@ -2073,8 +2069,8 @@ function addShipmentFromForm(e) {
     const isAir = isAirShipment(bookingForm);
     const isFullTruck = isFullTruckShipment(bookingForm);
     const billableQty = getShipmentBillableQty(bookingForm);
-    if (!bookingForm.customer || !bookingForm.line || !bookingForm.pol || !bookingForm.pod || !bookingForm.buyUsd || !bookingForm.sellUsd) {
-      alert("Please fill customer, line, route, buy price, and sell price.");
+    if (!bookingForm.customer || !bookingForm.line || !bookingForm.pol || !bookingForm.pod) {
+      alert("Please fill customer, line, and route.");
       return;
     }
     if (!billableQty || ((isFcl || isFullTruck) && !bookingForm.qty) || (!isFcl && !isFullTruck && !isAir && !bookingForm.cbm) || (isAir && !billableQty)) {
@@ -2097,8 +2093,6 @@ function addShipmentFromForm(e) {
       actualWeightKg: bookingForm.actualWeightKg,
       volumetricWeightKg: bookingForm.volumetricWeightKg,
       packageCount: bookingForm.packageCount,
-      buyUsd: Number(bookingForm.buyUsd),
-      sellUsd: Number(bookingForm.sellUsd),
       fx: activeFxRate,
       status: bookingForm.status,
       bookingNo: bookingForm.bookingNo || "Not set",
@@ -2276,6 +2270,7 @@ function addShipmentFromForm(e) {
       return;
     }
 
+    let updatedSelected = null;
     setShipments((previous) => previous.map((shipment) => {
       if (shipment.id !== shipmentId) return shipment;
       const prior = getFinancialInvoices(shipment).find((row) => row.id === editingInvoiceId);
@@ -2310,11 +2305,14 @@ function addShipmentFromForm(e) {
           ...(shipment.financialInvoiceSequences || {}),
           [invoiceForm.invoiceType.toLowerCase()]: Number(invoiceNo.match(/(\d+)$/)?.[1] || 0),
         };
-      return normalizeShipment(withTimeline(
+      const updated = normalizeShipment(withTimeline(
         { ...shipment, financialInvoices: invoices, financialInvoiceSequences: sequences, payments },
         createTimelineEvent("Invoice", editingInvoiceId ? "Invoice updated" : "Invoice added", `${savedInvoice.invoiceNo} | ${savedInvoice.invoiceType} | ${money(savedInvoice.amount, savedInvoice.currency)}`)
       ));
+      if (selectedShipment?.id === shipmentId) updatedSelected = updated;
+      return updated;
     }));
+    if (updatedSelected) setSelectedShipment(updatedSelected);
   }
 
   function deleteFinancialInvoice(shipmentId, invoiceId) {
@@ -2323,17 +2321,21 @@ function addShipmentFromForm(e) {
       return;
     }
     if (!confirm("Delete this invoice? Linked payment records will remain as unallocated payments.")) return;
+    let updatedSelected = null;
     setShipments((previous) => previous.map((shipment) => {
       if (shipment.id !== shipmentId) return shipment;
       const invoices = getFinancialInvoices(shipment).filter((invoice) => invoice.id !== invoiceId);
       const payments = getPayments(shipment).map((payment) => (
         payment.invoiceId === invoiceId ? { ...payment, invoiceId: "" } : payment
       ));
-      return normalizeShipment(withTimeline(
+      const updated = normalizeShipment(withTimeline(
         { ...shipment, financialInvoices: invoices, payments },
         createTimelineEvent("Invoice", "Invoice deleted", invoiceId)
       ));
+      if (selectedShipment?.id === shipmentId) updatedSelected = updated;
+      return updated;
     }));
+    if (updatedSelected) setSelectedShipment(updatedSelected);
   }
 
   function addInvoicePayment(shipmentId, invoice, invoicePaymentForm) {
@@ -2357,14 +2359,17 @@ function addShipmentFromForm(e) {
       createdBy: user?.email || "unknown",
     };
 
-    setShipments((previous) => previous.map((shipment) => (
-      shipment.id === shipmentId
-        ? normalizeShipment(withTimeline(
-          { ...shipment, payments: [newPayment, ...getPayments(shipment)] },
-          createTimelineEvent("Payment", "Invoice payment recorded", `${invoice.invoiceNo} | ${money(newPayment.amount, newPayment.currency)}`)
-        ))
-        : shipment
-    )));
+    let updatedSelected = null;
+    setShipments((previous) => previous.map((shipment) => {
+      if (shipment.id !== shipmentId) return shipment;
+      const updated = normalizeShipment(withTimeline(
+        { ...shipment, payments: [newPayment, ...getPayments(shipment)] },
+        createTimelineEvent("Payment", "Invoice payment recorded", `${invoice.invoiceNo} | ${money(newPayment.amount, newPayment.currency)}`)
+      ));
+      if (selectedShipment?.id === shipmentId) updatedSelected = updated;
+      return updated;
+    }));
+    if (updatedSelected) setSelectedShipment(updatedSelected);
   }
 
   function assignInvoicePayment(shipmentId, paymentId, invoiceId) {
@@ -2372,16 +2377,19 @@ function addShipmentFromForm(e) {
       alert("Only admin can allocate payments.");
       return;
     }
-    setShipments((previous) => previous.map((shipment) => (
-      shipment.id === shipmentId
-        ? normalizeShipment(withTimeline({
-          ...shipment,
-          payments: getPayments(shipment).map((payment) => (
-            payment.id === paymentId ? { ...payment, invoiceId, updatedAt: new Date().toISOString(), updatedBy: user?.email || "unknown" } : payment
-          )),
-        }, createTimelineEvent("Payment", "Payment allocated to invoice", invoiceId || "Unallocated")))
-        : shipment
-    )));
+    let updatedSelected = null;
+    setShipments((previous) => previous.map((shipment) => {
+      if (shipment.id !== shipmentId) return shipment;
+      const updated = normalizeShipment(withTimeline({
+        ...shipment,
+        payments: getPayments(shipment).map((payment) => (
+          payment.id === paymentId ? { ...payment, invoiceId, updatedAt: new Date().toISOString(), updatedBy: user?.email || "unknown" } : payment
+        )),
+      }, createTimelineEvent("Payment", "Payment allocated to invoice", invoiceId || "Unallocated")));
+      if (selectedShipment?.id === shipmentId) updatedSelected = updated;
+      return updated;
+    }));
+    if (updatedSelected) setSelectedShipment(updatedSelected);
   }
 
   function addTaskToShipment(e) {
@@ -2846,7 +2854,7 @@ function importLocalBackup(event) {
 
         {tab === "shipments" && <ShipmentsScreen resetShipmentFilters={resetShipmentFilters} query={query} setQuery={setQuery} shipmentFilters={shipmentFilters} customers={customers} updateShipmentFilter={updateShipmentFilter} suppliers={suppliers} setLineFilter={setLineFilter} ports={ports} canSeeFinance={canSeeFinance} role={role} filtered={filtered} openShipmentDetails={openShipmentDetails} activeFxRate={activeFxRate} deleteShipment={deleteShipment} bulkUpdateShipments={bulkUpdateShipments} />}
 
-        {tab === "booking" && <BookingScreen addShipmentFromForm={addShipmentFromForm} bookingForm={bookingForm} customers={customers} updateBooking={updateBooking} suppliers={suppliers} ports={ports} activeFxRate={activeFxRate} />}
+        {tab === "booking" && <BookingScreen addShipmentFromForm={addShipmentFromForm} bookingForm={bookingForm} customers={customers} updateBooking={updateBooking} suppliers={suppliers} ports={ports} />}
 
         {tab === "transport" && <TransportScreen addTransportToShipment={addTransportToShipment} transportForm={transportForm} updateTransport={updateTransport} shipments={shipments} suppliers={suppliers} deleteTransport={deleteTransport} canSeeFinance={canSeeFinance} />}
 

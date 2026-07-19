@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { FormField } from "../components/freightComponents";
-import { calcOceanSell, getDaysLeft, getPaymentStatusLabel, getPaymentSummary, getPayments, money, paymentAmountUsd } from "../utils/freight";
+import { calcSalesUsd, getDaysLeft, getPaymentStatusLabel, getPaymentSummary, getPayments, money, paymentAmountUsd } from "../utils/freight";
 import { generateReceiptPdf } from "../services/pdf";
 
 function getReceivableStatus(summary) {
@@ -75,7 +75,7 @@ export function ReceivablesScreen({ canManagePayments, addReceivableToShipment, 
               <div className="formGrid one">
                 <FormField label="Shipment"><select value={receivableForm.shipmentId} onChange={(e) => updateReceivable("shipmentId", e.target.value)}><option value="">Select Shipment</option>{shipments.map((shipment) => <option key={shipment.id} value={shipment.id}>{shipment.bookingNo && shipment.bookingNo !== "Not set" ? shipment.bookingNo : shipment.id} - {shipment.customer}</option>)}</select></FormField>
                 <FormField label="Customer"><input value={shipments.find((shipment) => shipment.id === receivableForm.shipmentId)?.customer || ""} disabled /></FormField>
-                <FormField label="Invoice Amount USD"><input value={receivableForm.shipmentId ? money(calcOceanSell(shipments.find((shipment) => shipment.id === receivableForm.shipmentId) || {})) : ""} disabled /></FormField>
+                <FormField label="Invoice Amount USD"><input value={receivableForm.shipmentId ? money(calcSalesUsd(shipments.find((shipment) => shipment.id === receivableForm.shipmentId) || {}, activeFxRate)) : ""} disabled /></FormField>
                 <FormField label="Collected Amount"><input type="number" step="0.01" value={receivableForm.amount} onChange={(e) => updateReceivable("amount", e.target.value)} /></FormField>
                 <FormField label="Currency"><select value={receivableForm.currency} onChange={(e) => updateReceivable("currency", e.target.value)}><option value="USD">USD</option><option value="TRY">TRY</option><option value="EUR">EUR</option></select></FormField>
                 <FormField label="FX Rate to USD"><input type="number" step="0.0001" value={receivableForm.fxRate || activeFxRate} onChange={(e) => updateReceivable("fxRate", e.target.value)} /></FormField>

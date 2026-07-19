@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { CargoSelect, ContainerSelect, CustomerSelect, FormField, PaymentSelect, PaymentSummaryBox, PortSelect, StatusSelect, SupplierSelect } from "../components/freightComponents";
 import { generateInvoicePdf } from "../services/pdf";
-import { calcExpensesUsd, calcGrossProfit, calcNetProfit, calcOceanBuy, calcOceanSell, calcTotalCostUsd, calcTransportTry, getExpenses, getMissingDocumentTypes, getPayments, getShipmentBillableQty, getShipmentDocuments, getShipmentFinancialLedger, getShipmentHealth, getShipmentInternalNotes, getShipmentLoadDescription, getShipmentPaymentStatus, getShipmentShareLinks, getShipmentUnitLabel, getTaskStatus, getTasks, getTimelineEvents, getTransports, isAirShipment, isFclShipment, isFullTruckShipment, money, requiredShipmentDocumentTypes } from "../utils/freight";
+import { calcExpensesUsd, calcGrossProfit, calcNetProfit, calcSalesUsd, calcTotalCostUsd, calcTransportTry, getExpenses, getMissingDocumentTypes, getPayments, getShipmentBillableQty, getShipmentDocuments, getShipmentFinancialLedger, getShipmentHealth, getShipmentInternalNotes, getShipmentLoadDescription, getShipmentPaymentStatus, getShipmentShareLinks, getShipmentUnitLabel, getTaskStatus, getTasks, getTimelineEvents, getTransports, isAirShipment, isFclShipment, isFullTruckShipment, money, requiredShipmentDocumentTypes } from "../utils/freight";
 
 const documentTypes = ["Bill of Lading", "Commercial Invoice", "Packing List", "Freight Invoice", "Customs", "Other"];
 
@@ -87,7 +87,7 @@ function ShipmentInvoiceTable({ title, rows }) {
   );
 }
 
-function ShipmentEditForm({ editForm, editIsFcl, editIsAir, editIsFullTruck, editUnitLabel, saveEditShipment, customers, updateEdit, canEditCore, suppliers, ports, setIsEditing }) {
+function ShipmentEditForm({ editForm, editIsFcl, editIsAir, editIsFullTruck, saveEditShipment, customers, updateEdit, canEditCore, suppliers, ports, setIsEditing }) {
   return (
     <form onSubmit={saveEditShipment} className="editBox">
       <div className="formGrid">
@@ -111,8 +111,6 @@ function ShipmentEditForm({ editForm, editIsFcl, editIsAir, editIsFullTruck, edi
         {canEditCore && !editIsFcl && !editIsFullTruck && !editIsAir && <FormField label="CBM"><input type="number" min="0" step="0.001" value={editForm.cbm} onChange={(e) => updateEdit("cbm", e.target.value)} /></FormField>}
         {canEditCore && !editIsFcl && !editIsFullTruck && <FormField label="Actual Weight KG"><input type="number" min="0" step="0.01" value={editForm.actualWeightKg} onChange={(e) => updateEdit("actualWeightKg", e.target.value)} /></FormField>}
         {canEditCore && editIsAir && <FormField label="Volumetric Weight KG"><input type="number" min="0" step="0.01" value={editForm.volumetricWeightKg} onChange={(e) => updateEdit("volumetricWeightKg", e.target.value)} /></FormField>}
-        {canEditCore && <FormField label={`Buy Price / ${editUnitLabel} USD`}><input type="number" min="0" step="0.01" value={editForm.buyUsd} onChange={(e) => updateEdit("buyUsd", e.target.value)} /></FormField>}
-        {canEditCore && <FormField label={`Sell Price / ${editUnitLabel} USD`}><input type="number" min="0" step="0.01" value={editForm.sellUsd} onChange={(e) => updateEdit("sellUsd", e.target.value)} /></FormField>}
       </div>
       <div className="actions mt">
         <button className="saveBtn" type="submit">Save Changes</button>
@@ -148,7 +146,6 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
   const editIsFcl = isFclShipment(editForm);
   const editIsAir = isAirShipment(editForm);
   const editIsFullTruck = isFullTruckShipment(editForm);
-  const editUnitLabel = getShipmentUnitLabel(editForm);
   const tasks = getTasks(selectedShipment);
   const transports = getTransports(selectedShipment);
   const expenses = getExpenses(selectedShipment);
@@ -187,7 +184,7 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
       </div>
 
       {isEditing ? (
-        <ShipmentEditForm editForm={editForm} editIsFcl={editIsFcl} editIsAir={editIsAir} editIsFullTruck={editIsFullTruck} editUnitLabel={editUnitLabel} saveEditShipment={saveEditShipment} customers={customers} updateEdit={updateEdit} canEditCore={canEditCore} suppliers={suppliers} ports={ports} setIsEditing={setIsEditing} />
+        <ShipmentEditForm editForm={editForm} editIsFcl={editIsFcl} editIsAir={editIsAir} editIsFullTruck={editIsFullTruck} saveEditShipment={saveEditShipment} customers={customers} updateEdit={updateEdit} canEditCore={canEditCore} suppliers={suppliers} ports={ports} setIsEditing={setIsEditing} />
       ) : (
         <>
           <DetailSubtabs activeTab={detailTab} setActiveTab={setDetailTab} canSeeFinance={canSeeFinance} />
@@ -272,8 +269,8 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
                 </div>
               )}
               <div className="detailGrid">
-                <p><b>Customer Sale:</b> {money(calcOceanSell(selectedShipment))}</p>
-                <p><b>Freight Buy Cost:</b> {money(calcOceanBuy(selectedShipment))}</p>
+                <p><b>Sales Invoices:</b> {money(calcSalesUsd(selectedShipment, activeFxRate))}</p>
+                <p><b>Purchase Invoices:</b> {money(calcTotalCostUsd(selectedShipment, activeFxRate))}</p>
                 <p><b>Local Transport Cost:</b> {money(calcTransportTry(selectedShipment), "TRY")}</p>
                 <p><b>Extra Expenses:</b> {money(calcExpensesUsd(selectedShipment))}</p>
                 <p><b>Total Cost USD:</b> {money(calcTotalCostUsd(selectedShipment, activeFxRate))}</p>

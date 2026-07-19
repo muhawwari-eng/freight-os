@@ -610,6 +610,10 @@ export function calcTotalCostUsd(shipment, exchangeRate) {
   return getShipmentFinancialLedger(shipment, exchangeRate).purchasesTotal;
 }
 
+export function calcSalesUsd(shipment, exchangeRate) {
+  return getShipmentFinancialLedger(shipment, exchangeRate).salesTotal;
+}
+
 export function calcGrossProfit(shipment, exchangeRate) {
   const ledger = getShipmentFinancialLedger(shipment, exchangeRate);
   const directPurchases = ledger.purchaseRows
@@ -623,7 +627,7 @@ export function calcNetProfit(shipment, exchangeRate) {
 }
 
 export function calcMargin(shipment, exchangeRate) {
-  const sale = calcOceanSell(shipment);
+  const sale = calcSalesUsd(shipment, exchangeRate);
   if (!sale) return 0;
   return (calcNetProfit(shipment, exchangeRate) / sale) * 100;
 }

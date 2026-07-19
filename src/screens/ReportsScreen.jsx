@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Card, CustomerSelect, FormField, SupplierSelect } from "../components/freightComponents";
-import { calcNetProfit, calcOceanSell, calcTotalCostUsd, getDateRangeLabel, getShipmentReportDate, money } from "../utils/freight";
+import { calcNetProfit, calcSalesUsd, calcTotalCostUsd, getDateRangeLabel, getShipmentReportDate, money } from "../utils/freight";
 
 export function ReportsScreen({ reportFromDate, setReportFromDate, reportToDate, setReportToDate, canSeeFinance, exportDetailedReportExcel, exportDetailedReportPdf, reportData, clientReportCustomer, customers, setClientReportCustomer, customerStatement, supplierReportSupplier, suppliers, setSupplierReportSupplier, supplierStatement, agingReport, partnerStats, exportClientReportExcel, exportClientReportPdf, exportSupplierReportExcel, exportSupplierReportPdf, openShipmentDetails, activeFxRate, createBackup, downloadLocalBackup, importLocalBackup, role, resetDemoData }) {
   const [reportView, setReportView] = useState("overview");
@@ -281,7 +281,7 @@ export function ReportsScreen({ reportFromDate, setReportFromDate, reportToDate,
                 <td>{shipment.line}</td>
                 <td>{shipment.pol} - {shipment.pod}</td>
                 <td><span className="badge">{shipment.status}</span></td>
-                {canSeeFinance && <td>{money(calcOceanSell(shipment))}</td>}
+                {canSeeFinance && <td>{money(calcSalesUsd(shipment, activeFxRate))}</td>}
                 {canSeeFinance && <td>{money(calcTotalCostUsd(shipment, activeFxRate))}</td>}
                 {canSeeFinance && <td><b>{money(calcNetProfit(shipment, activeFxRate))}</b></td>}
               </tr>

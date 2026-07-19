@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import {
-  calcOceanSell,
+  calcSalesUsd,
   getShipmentDocuments,
   getShipmentLoadDescription,
   getShipmentPaymentStatus,
@@ -32,7 +32,7 @@ function buildPublicSharePayload(shipment, options = {}, token = "", sharedAt = 
     loadDescription: getShipmentLoadDescription(normalized),
     status: normalized.status,
     paymentStatus: shareOptions.includePaymentStatus ? getShipmentPaymentStatus(normalized, Number(normalized.fx || 1) || 1) : "",
-    customerAmount: shareOptions.includeInvoiceAmount ? calcOceanSell(normalized) : null,
+    customerAmount: shareOptions.includeInvoiceAmount ? calcSalesUsd(normalized, Number(normalized.fx || 1) || 1) : null,
     cutOff: normalized.cutOff,
     etd: normalized.etd,
     eta: normalized.eta,

@@ -1,6 +1,6 @@
 import { portLabel } from "../data/defaults";
 import { generateReceiptPdf } from "../services/pdf";
-import { calcExpensesUsd, calcMargin, calcNetProfit, calcOceanSell, calcSingleTransportTry, calcTotalCostUsd, calcTransportTry, formatMonthLabel, getDaysLeft, getExpenses, getPaidByTypeUsd, getPaymentStatusLabel, getPaymentSummary, getPayments, getProgress, getPurchaseDueUsd, getTransports, money } from "../utils/freight";
+import { calcExpensesUsd, calcMargin, calcNetProfit, calcSalesUsd, calcSingleTransportTry, calcTotalCostUsd, calcTransportTry, formatMonthLabel, getDaysLeft, getExpenses, getPaidByTypeUsd, getPaymentStatusLabel, getPaymentSummary, getPayments, getProgress, getPurchaseDueUsd, getTransports, money } from "../utils/freight";
 
 export function FormField({ label, children }) {
   return (
@@ -203,7 +203,7 @@ export function ProfitCard({ shipment, exchangeRate }) {
   return (
     <div className="profitCard">
       <b>{shipment.id} — {shipment.customer}</b>
-      <p>Sale: {money(calcOceanSell(shipment))} | Cost: {money(calcTotalCostUsd(shipment, exchangeRate))} | Margin: {margin.toFixed(1)}%</p>
+      <p>Sale: {money(calcSalesUsd(shipment, exchangeRate))} | Cost: {money(calcTotalCostUsd(shipment, exchangeRate))} | Margin: {margin.toFixed(1)}%</p>
       <strong>{money(calcNetProfit(shipment, exchangeRate))}</strong>
       <div className="progress"><div style={{ width: `${Math.min(Math.max(margin, 3), 100)}%` }} /></div>
     </div>

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { CustomerSelect, FormField, PortSelect } from "../components/freightComponents";
-import { calcNetProfit, calcOceanBuy, calcOceanSell, getDaysLeft, getMissingDocumentTypes, getPaymentSummary, getShipmentBillableQty, getShipmentCalendarEvents, getShipmentHealth, getShipmentLoadDescription, getShipmentPaymentStatus, getShipmentUnitLabel, money } from "../utils/freight";
+import { calcNetProfit, calcSalesUsd, calcTotalCostUsd, getDaysLeft, getMissingDocumentTypes, getPaymentSummary, getShipmentBillableQty, getShipmentCalendarEvents, getShipmentHealth, getShipmentLoadDescription, getShipmentPaymentStatus, getShipmentUnitLabel, money } from "../utils/freight";
 
 function SortHeader({ label, sortKey, sortConfig, onSort }) {
   const active = sortConfig.key === sortKey;
@@ -19,8 +19,8 @@ function SortHeader({ label, sortKey, sortConfig, onSort }) {
 function getSortValue(shipment, key, activeFxRate) {
   if (key === "route") return `${shipment.pol || ""} ${shipment.pod || ""}`;
   if (key === "containers") return getShipmentBillableQty(shipment);
-  if (key === "buy") return calcOceanBuy(shipment);
-  if (key === "sell") return calcOceanSell(shipment);
+  if (key === "buy") return calcTotalCostUsd(shipment, activeFxRate);
+  if (key === "sell") return calcSalesUsd(shipment, activeFxRate);
   if (key === "profit") return calcNetProfit(shipment, activeFxRate);
   if (key === "paymentStatus") return getShipmentPaymentStatus(shipment, activeFxRate);
   return shipment[key] || "";
@@ -153,8 +153,8 @@ export function ShipmentsScreen({ resetShipmentFilters, query, setQuery, shipmen
                     <SortHeader label="ETD" sortKey="etd" sortConfig={sortConfig} onSort={sortBy} />
                     <SortHeader label="ETA" sortKey="eta" sortConfig={sortConfig} onSort={sortBy} />
                     <SortHeader label="Status" sortKey="status" sortConfig={sortConfig} onSort={sortBy} />
-                    {canSeeFinance && <SortHeader label="Buy" sortKey="buy" sortConfig={sortConfig} onSort={sortBy} />}
-                    {canSeeFinance && <SortHeader label="Sell" sortKey="sell" sortConfig={sortConfig} onSort={sortBy} />}
+                    {canSeeFinance && <SortHeader label="Purchases" sortKey="buy" sortConfig={sortConfig} onSort={sortBy} />}
+                    {canSeeFinance && <SortHeader label="Sales" sortKey="sell" sortConfig={sortConfig} onSort={sortBy} />}
                     {canSeeFinance && <SortHeader label="Profit" sortKey="profit" sortConfig={sortConfig} onSort={sortBy} />}
                     <SortHeader label="Payment" sortKey="paymentStatus" sortConfig={sortConfig} onSort={sortBy} />
                     {role === "admin" && <th>Action</th>}
@@ -180,8 +180,8 @@ export function ShipmentsScreen({ resetShipmentFilters, query, setQuery, shipmen
                       <td>{s.etd || "Not set"}</td>
                       <td>{s.eta || "Not set"}</td>
                       <td><span className="badge">{s.status}</span></td>
-                      {canSeeFinance && <td>{money(calcOceanBuy(s))}</td>}
-                      {canSeeFinance && <td>{money(calcOceanSell(s))}</td>}
+                      {canSeeFinance && <td>{money(calcTotalCostUsd(s, activeFxRate))}</td>}
+                      {canSeeFinance && <td>{money(calcSalesUsd(s, activeFxRate))}</td>}
                       {canSeeFinance && <td><b>{money(calcNetProfit(s, activeFxRate))}</b></td>}
                       <td><span className="paymentBadge">{getShipmentPaymentStatus(s, activeFxRate)}</span></td>
                       {role === "admin" && (

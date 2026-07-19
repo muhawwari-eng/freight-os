@@ -1,7 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { COMPANY_INFO, FSC_LOGO_DATA_URL } from "../data/defaults";
-import { calcOceanSell, getPaymentSummary, getShipmentBillableQty, getShipmentFinancialLedger, getShipmentLoadDescription, getShipmentUnitLabel, isAirShipment, isFclShipment, money, paymentAmountUsd, safeFileName } from "../utils/freight";
+import { calcSalesUsd, getPaymentSummary, getShipmentBillableQty, getShipmentFinancialLedger, getShipmentLoadDescription, getShipmentUnitLabel, isAirShipment, isFclShipment, money, paymentAmountUsd, safeFileName } from "../utils/freight";
 
 export function getInvoiceNumber(shipment) {
   const year = new Date().getFullYear();
@@ -20,7 +20,9 @@ export function generateInvoicePdf(shipment, exchangeRate) {
   const invoiceNo = getInvoiceNumber(shipment);
   const invoiceDate = new Date().toISOString().slice(0, 10);
   const paymentSummary = getPaymentSummary(shipment, exchangeRate);
-  const customerAmount = calcOceanSell(shipment);
+  const customerAmount = calcSalesUsd(shipment, exchangeRate);
+  const billableQty = getShipmentBillableQty(shipment);
+  const unitPrice = billableQty ? customerAmount / billableQty : customerAmount;
   const paidAmount = paymentSummary.receivablePaid;
   const remainingAmount = Math.max(customerAmount - paidAmount, 0);
   const paymentStatus = remainingAmount <= 0 ? "Paid" : paidAmount > 0 ? "Partially Paid" : "Unpaid";
@@ -171,8 +173,8 @@ export function generateInvoicePdf(shipment, exchangeRate) {
     head: [["Description", "Qty", "Unit Price (USD)", "Total (USD)"]],
     body: [[
       `Freight service - ${routeText} port`,
-      `${getShipmentBillableQty(shipment)} ${getShipmentUnitLabel(shipment)}`,
-      money(shipment.sellUsd || 0),
+      `${billableQty} ${getShipmentUnitLabel(shipment)}`,
+      money(unitPrice),
       money(customerAmount),
     ]],
     columnStyles: {
@@ -256,7 +258,7 @@ export function generateReceiptPdf(shipment, payment, exchangeRate) {
   const routeText = `${shipment?.pol || ""} to ${shipment?.pod || ""}`;
   const paymentSummary = getPaymentSummary(shipment, exchangeRate);
   const collectedUsd = paymentAmountUsd(payment, shipment, exchangeRate);
-  const invoiceAmount = calcOceanSell(shipment);
+  const invoiceAmount = calcSalesUsd(shipment, exchangeRate);
   const totalCollected = paymentSummary.receivablePaid;
   const remainingAmount = paymentSummary.receivableRemaining;
 
