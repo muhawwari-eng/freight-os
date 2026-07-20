@@ -637,20 +637,6 @@ export default function App() {
             });
           });
 
-        const expectedProfit = Number(shipment.expectedSalesUsd || 0) - Number(shipment.expectedPurchasesUsd || 0);
-        if ((Number(shipment.expectedSalesUsd || 0) || Number(shipment.expectedPurchasesUsd || 0)) && Math.abs(ledger.expectedProfit - expectedProfit) > Math.max(100, Math.abs(expectedProfit) * 0.2)) {
-          items.push({
-            id: `variance-${shipment.id}`,
-            severity: ledger.expectedProfit < expectedProfit ? "warning" : "info",
-            type: "Budget Variance",
-            title: "Actual profit differs from expected",
-            detail: `Expected ${money(expectedProfit)} vs actual ${money(ledger.expectedProfit)}.`,
-            meta: `${shipment.id} | ${route}`,
-            daysLeft: 2,
-            shipment,
-          });
-        }
-
         ledger.saleRows.forEach((row) => {
           const customer = customersByName.get(row.party || shipment.customer);
           const limit = Number(customer?.creditLimitUsd || 0);
@@ -2202,10 +2188,6 @@ function addShipmentFromForm(e) {
       actualWeightKg: bookingForm.actualWeightKg,
       volumetricWeightKg: bookingForm.volumetricWeightKg,
       packageCount: bookingForm.packageCount,
-      quotationNo: bookingForm.quotationNo,
-      expectedSalesUsd: Number(bookingForm.quotedSalesUsd || 0),
-      expectedPurchasesUsd: Number(bookingForm.quotedPurchasesUsd || 0),
-      expectedNote: bookingForm.quotationNote || "",
       fx: activeFxRate,
       status: bookingForm.status,
       bookingNo: bookingForm.bookingNo || "Not set",
@@ -2475,73 +2457,6 @@ function addShipmentFromForm(e) {
           row.id === invoiceId ? { ...row, approvalStatus: "Approved", approvedAt: new Date().toISOString(), approvedBy: user?.email || "unknown" } : row
         )),
       }, createTimelineEvent("Invoice", "Invoice approved", invoice?.invoiceNo || invoiceId)));
-      if (selectedShipment?.id === shipmentId) updatedSelected = updated;
-      return updated;
-    }));
-    if (updatedSelected) setSelectedShipment(updatedSelected);
-  }
-
-  function saveExpectedFinancials(shipmentId, expectedForm) {
-    if (!canManagePayments) return;
-    let updatedSelected = null;
-    setShipments((previous) => previous.map((shipment) => {
-      if (shipment.id !== shipmentId) return shipment;
-      if (shipment.financialClosed) {
-        alert("This financial file is closed. Reopen it before changing expected values.");
-        return shipment;
-      }
-      const updated = normalizeShipment(withTimeline({
-        ...shipment,
-        expectedSalesUsd: Number(expectedForm.expectedSalesUsd || 0),
-        expectedPurchasesUsd: Number(expectedForm.expectedPurchasesUsd || 0),
-        expectedNote: expectedForm.expectedNote || "",
-        updatedAt: new Date().toISOString(),
-      }, createTimelineEvent("Finance", "Expected budget updated", `Sales ${money(expectedForm.expectedSalesUsd)} | Purchases ${money(expectedForm.expectedPurchasesUsd)}`)));
-      if (selectedShipment?.id === shipmentId) updatedSelected = updated;
-      return updated;
-    }));
-    if (updatedSelected) setSelectedShipment(updatedSelected);
-  }
-
-  function applyFinancialCostTemplate(shipmentId) {
-    if (!canManagePayments) return;
-    const templateRows = [
-      { category: "Bill of Lading", party: "Operation Supplier", amount: 50 },
-      { category: "Port Charges", party: "Operation Supplier", amount: 100 },
-    ];
-    let updatedSelected = null;
-    setShipments((previous) => previous.map((shipment) => {
-      if (shipment.id !== shipmentId) return shipment;
-      if (shipment.financialClosed) {
-        alert("This financial file is closed. Reopen it before applying templates.");
-        return shipment;
-      }
-      const existing = new Set(getFinancialInvoices(shipment).map((invoice) => `${invoice.invoiceType}:${invoice.category}:${invoice.party}`));
-      const additions = templateRows
-        .filter((row) => !existing.has(`Purchase:${row.category}:${row.party}`))
-        .map((row, index) => ({
-          id: `INV-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 6)}`,
-          invoiceType: "Purchase",
-          category: row.category,
-          adjustmentKind: "Invoice",
-          approvalStatus: "Approved",
-          invoiceNo: `${shipment.id}-TPL-${String(index + 1).padStart(3, "0")}`,
-          invoiceDate: getLocalTodayDateKey(),
-          dueDate: "",
-          party: row.party,
-          amount: row.amount,
-          taxRate: 0,
-          currency: "USD",
-          fxRate: Number(shipment.fx || activeFxRate || 1),
-          note: "Added from recurring cost template.",
-          createdAt: new Date().toISOString(),
-          createdBy: user?.email || "unknown",
-        }));
-      if (!additions.length) return shipment;
-      const updated = normalizeShipment(withTimeline({
-        ...shipment,
-        financialInvoices: [...additions, ...getFinancialInvoices(shipment)],
-      }, createTimelineEvent("Invoice", "Recurring cost template applied", `${additions.length} invoice(s)`)));
       if (selectedShipment?.id === shipmentId) updatedSelected = updated;
       return updated;
     }));
@@ -3158,7 +3073,7 @@ function importLocalBackup(event) {
 
         {tab === "receivables" && canSeeFinance && <ReceivablesScreen canManagePayments={canManagePayments} addReceivableToShipment={addReceivableToShipment} receivableForm={receivableForm} updateReceivable={updateReceivable} shipments={shipments} activeFxRate={activeFxRate} deletePayment={deletePayment} openShipmentDetails={openShipmentDetails} />}
 
-        {tab === "financialManagement" && canSeeFinance && <FinancialManagementScreen shipments={shipments} customers={customers} suppliers={suppliers} activeFxRate={activeFxRate} canManagePayments={canManagePayments} saveFinancialInvoice={saveFinancialInvoice} deleteFinancialInvoice={deleteFinancialInvoice} approveFinancialInvoice={approveFinancialInvoice} saveExpectedFinancials={saveExpectedFinancials} toggleFinancialClosed={toggleFinancialClosed} applyFinancialCostTemplate={applyFinancialCostTemplate} addInvoicePayment={addInvoicePayment} addAllocatedInvoicePayment={addAllocatedInvoicePayment} assignInvoicePayment={assignInvoicePayment} />}
+        {tab === "financialManagement" && canSeeFinance && <FinancialManagementScreen shipments={shipments} customers={customers} suppliers={suppliers} activeFxRate={activeFxRate} canManagePayments={canManagePayments} saveFinancialInvoice={saveFinancialInvoice} deleteFinancialInvoice={deleteFinancialInvoice} approveFinancialInvoice={approveFinancialInvoice} toggleFinancialClosed={toggleFinancialClosed} addInvoicePayment={addInvoicePayment} addAllocatedInvoicePayment={addAllocatedInvoicePayment} assignInvoicePayment={assignInvoicePayment} />}
 
         {tab === "tasks" && <TasksScreen canEditOperation={canEditOperation} checkAndSendReminders={checkAndSendReminders} reminderRunning={reminderRunning} taskFilter={taskFilter} setTaskFilter={setTaskFilter} taskDashboard={taskDashboard} addTaskToShipment={addTaskToShipment} taskForm={taskForm} updateTask={updateTask} shipments={shipments} selectedTaskShipment={selectedTaskShipment} notifications={notifications} clearNotifications={clearNotifications} allTasks={allTasks} toggleTaskStatus={toggleTaskStatus} role={role} deleteTask={deleteTask} />}
 

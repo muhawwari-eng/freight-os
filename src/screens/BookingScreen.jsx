@@ -119,13 +119,6 @@ export function BookingScreen({ addShipmentFromForm, bookingForm, customers, upd
           {isAir && <FormField label="Volumetric Weight KG"><input type="number" min="0" step="0.01" value={bookingForm.volumetricWeightKg} onChange={(e) => updateBooking("volumetricWeightKg", e.target.value)} /></FormField>}
         </BookingSection>
 
-        <BookingSection title="Quotation / Expected Budget">
-          <FormField label="Quotation No"><input value={bookingForm.quotationNo || ""} onChange={(e) => updateBooking("quotationNo", e.target.value)} /></FormField>
-          <FormField label="Quoted Sales USD"><input type="number" min="0" step="0.01" value={bookingForm.quotedSalesUsd || ""} onChange={(e) => updateBooking("quotedSalesUsd", e.target.value)} /></FormField>
-          <FormField label="Quoted Purchases USD"><input type="number" min="0" step="0.01" value={bookingForm.quotedPurchasesUsd || ""} onChange={(e) => updateBooking("quotedPurchasesUsd", e.target.value)} /></FormField>
-          <FormField label="Quotation Note"><input value={bookingForm.quotationNote || ""} onChange={(e) => updateBooking("quotationNote", e.target.value)} /></FormField>
-        </BookingSection>
-
         <BookingSection title="Schedule & Status">
           {isSea && <FormField label="Cut-Off Date"><input type="date" value={bookingForm.cutOff} onChange={(e) => updateBooking("cutOff", e.target.value)} /></FormField>}
           {!isSea && <FormField label="Pickup / Ready Date"><input type="date" value={bookingForm.cutOff} onChange={(e) => updateBooking("cutOff", e.target.value)} /></FormField>}
