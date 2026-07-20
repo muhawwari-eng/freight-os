@@ -1,7 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { COMPANY_INFO, FSC_LOGO_DATA_URL } from "../data/defaults";
-import { calcSalesUsd, getPaymentSummary, getShipmentBillableQty, getShipmentFinancialLedger, getShipmentLoadDescription, getShipmentUnitLabel, isAirShipment, isFclShipment, money, paymentAmountUsd, safeFileName } from "../utils/freight";
+import { calcSalesUsd, financialInvoiceAmountUsd, getPaymentSummary, getShipmentBillableQty, getShipmentFinancialLedger, getShipmentLoadDescription, getShipmentUnitLabel, isAirShipment, isFclShipment, money, paymentAmountUsd, safeFileName } from "../utils/freight";
 
 export function getInvoiceNumber(shipment) {
   const year = new Date().getFullYear();
@@ -475,4 +475,50 @@ export function generateProfitReportPdf(shipment, exchangeRate) {
   });
 
   doc.save(`profit-report-${safeFileName(shipment.id)}.pdf`);
+}
+
+export function generateFinancialInvoicePdf(shipment, invoice, exchangeRate) {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const totalUsd = financialInvoiceAmountUsd(invoice, shipment, exchangeRate);
+  const title = `${invoice.adjustmentKind || "Invoice"} - ${invoice.invoiceType || "Sale"}`.toUpperCase();
+
+  doc.setFont(undefined, "bold");
+  doc.setFontSize(20);
+  doc.text(title, 14, 18);
+  doc.setFontSize(12);
+  doc.text(COMPANY_INFO.name, 14, 27);
+  doc.setFont(undefined, "normal");
+  doc.setFontSize(10);
+  doc.text(`Invoice No: ${invoice.invoiceNo || "Not set"}`, 14, 40);
+  doc.text(`Date: ${invoice.invoiceDate || "Not set"}   Due: ${invoice.dueDate || "Not set"}`, 14, 47);
+  doc.text(`Shipment: ${shipment.id}   Booking: ${shipment.bookingNo || "Not set"}`, 14, 54);
+  doc.text(`Route: ${shipment.pol || ""} to ${shipment.pod || ""}`, 14, 61);
+  doc.text(`Party: ${invoice.party || "Not set"}`, 14, 68);
+
+  autoTable(doc, {
+    startY: 80,
+    theme: "grid",
+    head: [["Category", "Kind", "Amount", "Tax", "Currency", "FX", "Total USD", "Approval"]],
+    body: [[
+      invoice.category || "",
+      invoice.adjustmentKind || "Invoice",
+      money(invoice.amount || 0, invoice.currency || "USD"),
+      `${Number(invoice.taxRate || 0)}%`,
+      invoice.currency || "USD",
+      String(invoice.fxRate || shipment.fx || exchangeRate || 1),
+      money(totalUsd),
+      invoice.approvalStatus || "Approved",
+    ]],
+    styles: { fontSize: 9 },
+    headStyles: { fillColor: [14, 18, 22], textColor: [255, 255, 255] },
+  });
+
+  if (invoice.note) {
+    doc.setFont(undefined, "bold");
+    doc.text("Note", 14, doc.lastAutoTable.finalY + 14);
+    doc.setFont(undefined, "normal");
+    doc.text(String(invoice.note), 14, doc.lastAutoTable.finalY + 22, { maxWidth: 180 });
+  }
+
+  doc.save(`${safeFileName(invoice.invoiceNo || invoice.id)}.pdf`);
 }

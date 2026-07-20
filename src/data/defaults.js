@@ -171,7 +171,10 @@ export const emptyCustomerForm = {
   contact: "",
   phone: "",
   email: "",
+  secondaryContact: "",
+  secondaryEmail: "",
   country: "",
+  creditLimitUsd: "",
   note: "",
 };
 
@@ -415,6 +418,10 @@ export const emptyBookingForm = {
   actualWeightKg: "",
   volumetricWeightKg: "",
   packageCount: "",
+  quotationNo: "",
+  quotedSalesUsd: "",
+  quotedPurchasesUsd: "",
+  quotationNote: "",
   status: "Draft",
   bookingNo: "",
   vessel: "",
@@ -466,6 +473,8 @@ export const emptyReceivableForm = {
 export const emptyFinancialInvoiceForm = {
   invoiceType: "Sale",
   category: "Freight Sale",
+  adjustmentKind: "Invoice",
+  approvalStatus: "Approved",
   invoiceNo: "",
   invoiceDate: getLocalTodayDateKey(),
   dueDate: "",
@@ -474,6 +483,8 @@ export const emptyFinancialInvoiceForm = {
   taxRate: "0",
   currency: "USD",
   fxRate: "",
+  attachmentName: "",
+  attachmentDataUrl: "",
   note: "",
 };
 

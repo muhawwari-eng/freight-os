@@ -7,16 +7,27 @@ export function CustomersScreen({ canEditCore, addCustomer, customerForm, update
   const [viewFilter, setViewFilter] = useState("all");
 
   function getCustomerProfile(customerName) {
-    const customerShipments = shipments.filter((shipment) => shipment.customer === customerName);
-    const totals = customerShipments.reduce((summary, shipment) => {
+    const activity = shipments.flatMap((shipment) => {
       const ledger = getShipmentFinancialLedger(shipment, activeFxRate);
-      return {
-        sales: summary.sales + ledger.salesTotal,
-        remaining: summary.remaining + ledger.salesRemaining,
-        collected: summary.collected + ledger.salesPaid,
-        profit: summary.profit + ledger.expectedProfit,
-      };
-    }, { sales: 0, remaining: 0, collected: 0, profit: 0 });
+      const rows = ledger.saleRows.filter((invoice) => (invoice.party || shipment.customer) === customerName);
+      if (!rows.length && shipment.customer === customerName) return [{ shipment, invoices: [], sales: 0, remaining: 0, collected: 0, profit: ledger.expectedProfit }];
+      return rows.map((invoice) => ({
+        shipment,
+        invoices: [invoice],
+        sales: invoice.totalUsd,
+        remaining: invoice.remainingUsd,
+        collected: invoice.paidUsd,
+        profit: ledger.expectedProfit,
+      }));
+    });
+    const customerShipments = Array.from(new Map(activity.map((row) => [row.shipment.id, row.shipment])).values());
+    const totals = activity.reduce((summary, row) => ({
+      sales: summary.sales + row.sales,
+      remaining: summary.remaining + row.remaining,
+      collected: summary.collected + row.collected,
+      profit: summary.profit + row.profit,
+      invoices: summary.invoices + row.invoices.length,
+    }), { sales: 0, remaining: 0, collected: 0, profit: 0, invoices: 0 });
     const latestShipment = [...customerShipments].sort((a, b) => String(b.entryDate || b.createdAt || "").localeCompare(String(a.entryDate || a.createdAt || "")))[0];
     return { shipments: customerShipments, latestShipment, ...totals };
   }
@@ -24,7 +35,7 @@ export function CustomersScreen({ canEditCore, addCustomer, customerForm, update
   const customerRows = customers.map((customer) => ({ customer, profile: getCustomerProfile(customer.name) }))
     .filter(({ customer, profile }) => {
       const text = query.trim().toLowerCase();
-      const matchesText = !text || [customer.name, customer.contact, customer.phone, customer.email, customer.country, customer.note]
+      const matchesText = !text || [customer.name, customer.contact, customer.secondaryContact, customer.phone, customer.email, customer.secondaryEmail, customer.country, customer.note]
         .some((value) => String(value || "").toLowerCase().includes(text));
       if (!matchesText) return false;
       if (viewFilter === "active") return profile.shipments.length > 0;
@@ -72,7 +83,10 @@ export function CustomersScreen({ canEditCore, addCustomer, customerForm, update
                 <FormField label="Contact Person"><input value={customerForm.contact} onChange={(e) => updateCustomer("contact", e.target.value)} /></FormField>
                 <FormField label="Phone"><input value={customerForm.phone} onChange={(e) => updateCustomer("phone", e.target.value)} /></FormField>
                 <FormField label="Email"><input type="email" value={customerForm.email} onChange={(e) => updateCustomer("email", e.target.value)} /></FormField>
+                <FormField label="Secondary Contact"><input value={customerForm.secondaryContact || ""} onChange={(e) => updateCustomer("secondaryContact", e.target.value)} /></FormField>
+                <FormField label="Secondary Email"><input type="email" value={customerForm.secondaryEmail || ""} onChange={(e) => updateCustomer("secondaryEmail", e.target.value)} /></FormField>
                 <FormField label="Country"><input value={customerForm.country} onChange={(e) => updateCustomer("country", e.target.value)} /></FormField>
+                <FormField label="Credit Limit USD"><input type="number" step="0.01" value={customerForm.creditLimitUsd || ""} onChange={(e) => updateCustomer("creditLimitUsd", e.target.value)} /></FormField>
                 <FormField label="Note"><input value={customerForm.note} onChange={(e) => updateCustomer("note", e.target.value)} /></FormField>
               </div>
               <div className="actions mt">
@@ -107,16 +121,18 @@ export function CustomersScreen({ canEditCore, addCustomer, customerForm, update
                     <b>{customer.name}</b>
                     <p>{customer.contact || "No contact"} {customer.phone ? `| ${customer.phone}` : ""}</p>
                   </div>
-                  <span className={profile.remaining > 0.01 ? "paymentBadge" : "badge"}>{profile.remaining > 0.01 ? "Balance" : "Clear"}</span>
+                  <span className={profile.remaining > Number(customer.creditLimitUsd || 0) && Number(customer.creditLimitUsd || 0) > 0 ? "dangerBtn" : profile.remaining > 0.01 ? "paymentBadge" : "badge"}>{profile.remaining > Number(customer.creditLimitUsd || 0) && Number(customer.creditLimitUsd || 0) > 0 ? "Over Limit" : profile.remaining > 0.01 ? "Balance" : "Clear"}</span>
                 </div>
-                <p>{customer.email || "No email"} {customer.country ? `| ${customer.country}` : ""}</p>
+                <p>{customer.email || "No email"} {customer.secondaryEmail ? `| Alt: ${customer.secondaryEmail}` : ""} {customer.country ? `| ${customer.country}` : ""}</p>
                 {customer.note && <p>{customer.note}</p>}
                 <div className="customer360Metrics">
                   <span><small>Files</small><b>{profile.shipments.length}</b></span>
+                  <span><small>Invoices</small><b>{profile.invoices}</b></span>
                   <span><small>Sales</small><b>{money(profile.sales)}</b></span>
                   <span><small>Open</small><b>{money(profile.remaining)}</b></span>
                   <span><small>Profit</small><b>{money(profile.profit)}</b></span>
                 </div>
+                <p className="smallText">Credit limit: {Number(customer.creditLimitUsd || 0) ? money(customer.creditLimitUsd) : "Not set"} | Available: {Number(customer.creditLimitUsd || 0) ? money(Number(customer.creditLimitUsd || 0) - profile.remaining) : "-"}</p>
                 {profile.latestShipment && <p className="smallText">Last file: {profile.latestShipment.id} | ETA {profile.latestShipment.eta || "Not set"}</p>}
                 <div className="customerShipments">
                   {profile.shipments.slice(0, 3).map((shipment) => (

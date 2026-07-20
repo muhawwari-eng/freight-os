@@ -277,10 +277,15 @@ export function invoiceTaxAmount(invoice) {
   return amount * taxRate / 100;
 }
 
+export function getInvoiceSign(invoice) {
+  return invoice?.adjustmentKind === "Credit Note" ? -1 : 1;
+}
+
 export function financialInvoiceAmountUsd(invoice, shipment, exchangeRate) {
   const amount = Number(invoice.amount || 0) + invoiceTaxAmount(invoice);
-  if ((invoice.currency || "USD") !== "USD") return amount / getRate({ fx: invoice.fxRate || shipment?.fx }, exchangeRate);
-  return amount;
+  const signedAmount = amount * getInvoiceSign(invoice);
+  if ((invoice.currency || "USD") !== "USD") return signedAmount / getRate({ fx: invoice.fxRate || shipment?.fx }, exchangeRate);
+  return signedAmount;
 }
 
 export function getInvoicePaymentType(invoice) {
@@ -372,19 +377,31 @@ export function getShipmentFinancialLedger(shipment, exchangeRate) {
   const rows = invoices.map((invoice) => {
     const paymentType = getInvoicePaymentType(invoice);
     const linked = payments.filter((payment) => payment.invoiceId === invoice.id);
+    const allocated = payments
+      .map((payment) => {
+        const allocation = Array.isArray(payment.allocations)
+          ? payment.allocations.find((item) => item.invoiceId === invoice.id)
+          : null;
+        if (!allocation) return null;
+        const amountUsd = Number(allocation.amountUsd || 0);
+        return { ...payment, appliedAmountUsd: amountUsd > 0 ? amountUsd : paymentAmountUsd(payment, shipment, exchangeRate) };
+      })
+      .filter(Boolean);
     const compatibleInvoices = rowsByPaymentType.get(paymentType) || [];
     const compatibleUnlinked = payments.filter((payment) => {
-      if (payment.invoiceId || payment.purchaseType !== paymentType) return false;
+      if (payment.invoiceId || Array.isArray(payment.allocations) || payment.purchaseType !== paymentType) return false;
       if (compatibleInvoices.length === 1) return true;
       return String(payment.company || "").trim().toLowerCase() === String(invoice.party || "").trim().toLowerCase();
     });
-    const appliedPayments = [...linked, ...compatibleUnlinked];
+    const appliedPayments = [...linked, ...allocated, ...compatibleUnlinked];
     const totalUsd = financialInvoiceAmountUsd(invoice, shipment, exchangeRate);
     const taxUsd = financialInvoiceAmountUsd({ ...invoice, amount: invoiceTaxAmount(invoice), taxRate: 0 }, shipment, exchangeRate);
-    const paidUsd = appliedPayments.reduce((sum, payment) => sum + paymentAmountUsd(payment, shipment, exchangeRate), 0);
+    const paidUsd = appliedPayments.reduce((sum, payment) => sum + Number(payment.appliedAmountUsd ?? paymentAmountUsd(payment, shipment, exchangeRate)), 0);
     const remainingUsd = Math.max(totalUsd - paidUsd, 0);
     return {
       ...invoice,
+      adjustmentKind: invoice.adjustmentKind || "Invoice",
+      approvalStatus: invoice.approvalStatus || "Approved",
       paymentType,
       taxUsd,
       totalUsd,
@@ -395,8 +412,20 @@ export function getShipmentFinancialLedger(shipment, exchangeRate) {
     };
   });
 
-  const appliedPaymentIds = new Set(rows.flatMap((row) => row.payments.map((payment) => payment.id)));
-  const unallocatedPayments = payments.filter((payment) => !appliedPaymentIds.has(payment.id));
+  const appliedPaymentTotals = rows.reduce((map, row) => {
+    row.payments.forEach((payment) => {
+      const amountUsd = Number(payment.appliedAmountUsd ?? paymentAmountUsd(payment, shipment, exchangeRate));
+      map.set(payment.id, (map.get(payment.id) || 0) + amountUsd);
+    });
+    return map;
+  }, new Map());
+  const unallocatedPayments = payments
+    .map((payment) => {
+      const amountUsd = paymentAmountUsd(payment, shipment, exchangeRate);
+      const allocatedUsd = appliedPaymentTotals.get(payment.id) || 0;
+      return { ...payment, amountUsd, allocatedUsd, unallocatedUsd: Math.max(amountUsd - allocatedUsd, 0) };
+    })
+    .filter((payment) => payment.unallocatedUsd > 0.01);
   const saleRows = rows.filter((row) => row.invoiceType === "Sale");
   const purchaseRows = rows.filter((row) => row.invoiceType === "Purchase");
   const total = (items, field) => items.reduce((sum, row) => sum + row[field], 0);
@@ -451,18 +480,18 @@ export function getPaymentStatusLabel(shipment, purchaseType, exchangeRate) {
 }
 
 export function getShipmentPaymentStatus(shipment, exchangeRate) {
-  const status = getPaymentStatusLabel(shipment, "Customer Receipt", exchangeRate);
-  if (status === "Paid") return "Fully Paid";
-  if (status === "Partially Paid") return "Partially Paid";
+  const summary = getPaymentSummary(shipment, exchangeRate);
+  if (summary.receivableDue > 0 && summary.receivableRemaining <= 0.01) return "Fully Paid";
+  if (summary.receivablePaid > 0) return "Partially Paid";
   return shipment?.paymentStatus === "Partially Paid" ? "Partially Paid" : "Unpaid";
 }
 
 export function getPaymentSummary(shipment, exchangeRate) {
-  const payableTypes = ["Ocean Freight", "Local Transport", "Expense"];
-  const payableDue = payableTypes.reduce((sum, type) => sum + getPurchaseDueUsd(shipment, type, exchangeRate), 0);
-  const payablePaid = payableTypes.reduce((sum, type) => sum + getPaidByTypeUsd(shipment, type, exchangeRate), 0);
-  const receivableDue = getPurchaseDueUsd(shipment, "Customer Receipt", exchangeRate);
-  const receivablePaid = getPaidByTypeUsd(shipment, "Customer Receipt", exchangeRate);
+  const ledger = getShipmentFinancialLedger(shipment, exchangeRate);
+  const payableDue = ledger.purchasesTotal;
+  const payablePaid = ledger.purchasesPaid;
+  const receivableDue = ledger.salesTotal;
+  const receivablePaid = ledger.salesPaid;
 
   return {
     payableDue,

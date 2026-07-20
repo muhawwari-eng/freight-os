@@ -62,6 +62,7 @@ function ShipmentInvoiceTable({ title, rows }) {
                 <th>Paid</th>
                 <th>Balance</th>
                 <th>Status</th>
+                <th>File</th>
               </tr>
             </thead>
             <tbody>
@@ -77,6 +78,7 @@ function ShipmentInvoiceTable({ title, rows }) {
                   <td>{money(row.paidUsd)}</td>
                   <td>{money(row.remainingUsd)}</td>
                   <td><span className={`ledgerStatus ${row.status.replaceAll(" ", "").toLowerCase()}`}>{row.status}</span></td>
+                  <td>{row.attachmentDataUrl ? <a className="ghostBtn" href={row.attachmentDataUrl} download={row.attachmentName || "invoice-attachment"}>Download</a> : "-"}</td>
                 </tr>
               ))}
             </tbody>
@@ -236,6 +238,7 @@ export function ShipmentDetailsScreen({ selectedShipment, activeFxRate, canSeeFi
                 <p><b>ETD / ETA:</b> {selectedShipment.etd || "Not set"} / {selectedShipment.eta || "Not set"}</p>
                 <p><b>Payment:</b> {getShipmentPaymentStatus(selectedShipment, activeFxRate)}</p>
                 <p><b>FX Rate:</b> {selectedShipment.fx || activeFxRate} TRY/USD</p>
+                {canSeeFinance && <p><b>Financial File:</b> {selectedShipment.financialClosed ? `Closed (${selectedShipment.financialCloseReason || "No reason"})` : "Open"}</p>}
               </div>
 
               <h3>Local Transport</h3>
