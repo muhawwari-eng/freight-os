@@ -906,34 +906,65 @@ export default function App() {
   }
 
   const customerStatement = useMemo(() => {
-    const selectedShipments = reportData.shipments.filter((shipment) => clientReportCustomer === "all" || shipment.customer === clientReportCustomer);
-    const rows = selectedShipments.map((shipment) => {
+    const rows = reportData.shipments.flatMap((shipment) => {
       const ledger = getShipmentFinancialLedger(shipment, activeFxRate);
-      const payments = getPayments(shipment).filter((payment) => payment.purchaseType === "Customer Receipt");
-      return {
-        shipment,
-        invoiceUsd: ledger.salesTotal,
-        collectedUsd: ledger.salesPaid,
-        remainingUsd: ledger.salesRemaining,
-        status: ledger.salesRemaining <= 0.01 ? "Paid" : ledger.salesPaid > 0 ? "Partially Paid" : "Unpaid",
-        invoices: ledger.saleRows,
-        payments,
-      };
+      const invoicesByCustomer = new Map();
+
+      ledger.saleRows.forEach((invoice) => {
+        const customer = invoice.party || shipment.customer || "Unknown Customer";
+        if (clientReportCustomer !== "all" && customer !== clientReportCustomer) return;
+        const row = invoicesByCustomer.get(customer) || {
+          id: `${shipment.id}-${customer}`,
+          shipment,
+          customer,
+          invoiceUsd: 0,
+          collectedUsd: 0,
+          remainingUsd: 0,
+          invoices: [],
+          payments: [],
+        };
+        row.invoiceUsd += invoice.totalUsd;
+        row.collectedUsd += invoice.paidUsd;
+        row.remainingUsd += invoice.remainingUsd;
+        row.invoices.push(invoice);
+        invoice.payments.forEach((payment) => {
+          if (!row.payments.some((item) => item.id === payment.id)) row.payments.push(payment);
+        });
+        invoicesByCustomer.set(customer, row);
+      });
+
+      return Array.from(invoicesByCustomer.values()).map((row) => ({
+        ...row,
+        status: row.remainingUsd <= 0.01 ? "Paid" : row.collectedUsd > 0 ? "Partially Paid" : "Unpaid",
+      }));
     });
+    const shipmentIds = new Set(rows.map((row) => row.shipment.id));
     return rows.reduce(
       (acc, row) => {
         acc.rows.push(row);
-        row.invoices.forEach((invoice) => acc.invoices.push({ shipment: row.shipment, invoice }));
-        row.payments.forEach((payment) => acc.payments.push({ shipment: row.shipment, payment, amountUsd: paymentAmountUsd(payment, row.shipment, activeFxRate) }));
-        acc.shipments += 1;
+        row.invoices.forEach((invoice) => acc.invoices.push({ shipment: row.shipment, customer: row.customer, invoice }));
+        row.payments.forEach((payment) => acc.payments.push({ shipment: row.shipment, customer: row.customer, payment, amountUsd: paymentAmountUsd(payment, row.shipment, activeFxRate) }));
         acc.invoiceUsd += row.invoiceUsd;
         acc.collectedUsd += row.collectedUsd;
         acc.remainingUsd += row.remainingUsd;
         return acc;
       },
-      { rows: [], invoices: [], payments: [], shipments: 0, invoiceUsd: 0, collectedUsd: 0, remainingUsd: 0 }
+      { rows: [], invoices: [], payments: [], shipments: shipmentIds.size, invoiceUsd: 0, collectedUsd: 0, remainingUsd: 0 }
     );
   }, [reportData.shipments, clientReportCustomer, activeFxRate]);
+
+  const customerStatementOptions = useMemo(() => {
+    const optionsByName = new Map(customers.map((customer) => [customer.name, customer]));
+    reportData.shipments.forEach((shipment) => {
+      getShipmentFinancialLedger(shipment, activeFxRate).saleRows.forEach((invoice) => {
+        const name = invoice.party || shipment.customer;
+        if (name && !optionsByName.has(name)) {
+          optionsByName.set(name, { id: `invoice-party-${name}`, name });
+        }
+      });
+    });
+    return Array.from(optionsByName.values()).sort((left, right) => String(left.name).localeCompare(String(right.name), undefined, { sensitivity: "base" }));
+  }, [activeFxRate, customers, reportData.shipments]);
 
   const supplierStatement = useMemo(() => {
     const matchesSupplier = (row) => {
@@ -1019,8 +1050,9 @@ export default function App() {
   }, [reportData.shipments, activeFxRate]);
 
   function exportClientReportExcel() {
-    const rows = customerStatement.rows.map(({ shipment, invoiceUsd, collectedUsd, remainingUsd, status }) => ({
+    const rows = customerStatement.rows.map(({ shipment, customer, invoiceUsd, collectedUsd, remainingUsd, status }) => ({
       ...customerShipmentRows([shipment])[0],
+      Customer: customer,
       "Invoice Total USD": Number(invoiceUsd.toFixed(2)),
       "Collected USD": Number(collectedUsd.toFixed(2)),
       "Remaining USD": Number(remainingUsd.toFixed(2)),
@@ -1039,10 +1071,10 @@ export default function App() {
       { Metric: "Collected USD", Value: Number(customerStatement.collectedUsd.toFixed(2)) },
       { Metric: "Remaining USD", Value: Number(customerStatement.remainingUsd.toFixed(2)) },
     ];
-    const invoiceRows = customerStatement.invoices.map(({ shipment, invoice }) => ({
+    const invoiceRows = customerStatement.invoices.map(({ shipment, customer, invoice }) => ({
       Date: invoice.invoiceDate || getShipmentReportDate(shipment) || "",
       "Shipment ID": shipment.id,
-      Customer: shipment.customer || "",
+      Customer: customer || invoice.party || shipment.customer || "",
       "Invoice No": invoice.invoiceNo || "",
       Category: invoice.category || "",
       "Invoice Total USD": Number(invoice.totalUsd.toFixed(2)),
@@ -1050,10 +1082,10 @@ export default function App() {
       "Remaining USD": Number(invoice.remainingUsd.toFixed(2)),
       Status: invoice.status,
     }));
-    const paymentRows = customerStatement.payments.map(({ shipment, payment, amountUsd }) => ({
+    const paymentRows = customerStatement.payments.map(({ shipment, customer, payment, amountUsd }) => ({
       Date: payment.paidDate || "",
       "Shipment ID": shipment.id,
-      Customer: shipment.customer || "",
+      Customer: customer || payment.company || shipment.customer || "",
       "Payment Type": payment.purchaseType || "",
       "Payment Amount": Number(payment.amount || 0),
       Currency: payment.currency || "USD",
@@ -1075,7 +1107,7 @@ export default function App() {
       return;
     }
     const customerName = clientReportCustomer === "all" ? "All Customers" : clientReportCustomer;
-    const rows = customerStatement.rows.map((row) => row.shipment);
+    const rows = customerStatement.rows;
     const doc = new jsPDF({ orientation: "landscape" });
     doc.setFontSize(16);
     doc.text(`Customer Statement - ${customerName}`, 14, 16);
@@ -1083,10 +1115,11 @@ export default function App() {
     doc.text(`Date Range: ${getDateRangeLabel(reportFromDate, reportToDate)} | Exported: ${new Date().toLocaleString()}`, 14, 24);
     autoTable(doc, {
       startY: 30,
-      head: [["Date", "Shipment", "Carrier", "Route", "Cargo", "Qty", "Booking", "Vessel", "Cut-Off", "ETD", "ETA", "Status", "Payment", "Amount"]],
-      body: rows.map((s) => [
+      head: [["Date", "Shipment", "Customer", "Carrier", "Route", "Cargo", "Qty", "Booking", "Vessel", "Cut-Off", "ETD", "ETA", "Status", "Payment", "Amount"]],
+      body: rows.map(({ shipment: s, customer, invoiceUsd }) => [
         getShipmentReportDate(s) ? new Date(getShipmentReportDate(s)).toISOString().slice(0, 10) : "Not set",
         s.id,
+        customer,
         s.line || "",
         `${s.pol || ""} → ${s.pod || ""}`,
         `${s.cargoType || ""} / ${getShipmentLoadDescription(s)}`,
@@ -1098,7 +1131,7 @@ export default function App() {
         s.eta || "",
         s.status || "",
         getShipmentPaymentStatus(s, activeFxRate),
-        money(calcSalesUsd(s, activeFxRate)),
+        money(invoiceUsd),
       ]),
       styles: { fontSize: 7 },
       headStyles: { fontSize: 7 },
@@ -1111,9 +1144,10 @@ export default function App() {
     });
     autoTable(doc, {
       startY: doc.lastAutoTable.finalY + 8,
-      head: [["Shipment", "Invoice", "Collected", "Remaining", "Status"]],
-      body: customerStatement.rows.map(({ shipment, invoiceUsd, collectedUsd, remainingUsd, status }) => [
+      head: [["Shipment", "Customer", "Invoice", "Collected", "Remaining", "Status"]],
+      body: customerStatement.rows.map(({ shipment, customer, invoiceUsd, collectedUsd, remainingUsd, status }) => [
         shipment.id,
+        customer,
         money(invoiceUsd),
         money(collectedUsd),
         money(remainingUsd),
@@ -1124,10 +1158,11 @@ export default function App() {
     });
     autoTable(doc, {
       startY: doc.lastAutoTable.finalY + 8,
-      head: [["Date", "Shipment", "Payment Type", "Amount", "USD Value", "Note"]],
-      body: customerStatement.payments.map(({ shipment, payment, amountUsd }) => [
+      head: [["Date", "Shipment", "Customer", "Payment Type", "Amount", "USD Value", "Note"]],
+      body: customerStatement.payments.map(({ shipment, customer, payment, amountUsd }) => [
         payment.paidDate || "",
         shipment.id,
+        customer,
         payment.purchaseType || "",
         money(Number(payment.amount || 0), payment.currency || "USD"),
         money(amountUsd),
@@ -2876,7 +2911,7 @@ function importLocalBackup(event) {
 
         {tab === "ports" && <PortsScreen canEditCore={canEditCore} addPort={addPort} portForm={portForm} updatePort={updatePort} ports={ports} role={role} deletePort={deletePort} />}
 
-        {tab === "reports" && <ReportsScreen reportFromDate={reportFromDate} setReportFromDate={setReportFromDate} reportToDate={reportToDate} setReportToDate={setReportToDate} canSeeFinance={canSeeFinance} exportDetailedReportExcel={exportDetailedReportExcel} exportDetailedReportPdf={exportDetailedReportPdf} reportData={reportData} clientReportCustomer={clientReportCustomer} customers={customers} setClientReportCustomer={setClientReportCustomer} customerStatement={customerStatement} supplierReportSupplier={supplierReportSupplier} suppliers={suppliers} setSupplierReportSupplier={setSupplierReportSupplier} supplierStatement={supplierStatement} agingReport={agingReport} partnerStats={partnerStats} exportClientReportExcel={exportClientReportExcel} exportClientReportPdf={exportClientReportPdf} exportSupplierReportExcel={exportSupplierReportExcel} exportSupplierReportPdf={exportSupplierReportPdf} openShipmentDetails={openShipmentDetails} activeFxRate={activeFxRate} createBackup={createBackup} downloadLocalBackup={downloadLocalBackup} importLocalBackup={importLocalBackup} role={role} resetDemoData={resetDemoData} />}
+        {tab === "reports" && <ReportsScreen reportFromDate={reportFromDate} setReportFromDate={setReportFromDate} reportToDate={reportToDate} setReportToDate={setReportToDate} canSeeFinance={canSeeFinance} exportDetailedReportExcel={exportDetailedReportExcel} exportDetailedReportPdf={exportDetailedReportPdf} reportData={reportData} clientReportCustomer={clientReportCustomer} customers={customers} customerStatementOptions={customerStatementOptions} setClientReportCustomer={setClientReportCustomer} customerStatement={customerStatement} supplierReportSupplier={supplierReportSupplier} suppliers={suppliers} setSupplierReportSupplier={setSupplierReportSupplier} supplierStatement={supplierStatement} agingReport={agingReport} partnerStats={partnerStats} exportClientReportExcel={exportClientReportExcel} exportClientReportPdf={exportClientReportPdf} exportSupplierReportExcel={exportSupplierReportExcel} exportSupplierReportPdf={exportSupplierReportPdf} openShipmentDetails={openShipmentDetails} activeFxRate={activeFxRate} createBackup={createBackup} downloadLocalBackup={downloadLocalBackup} importLocalBackup={importLocalBackup} role={role} resetDemoData={resetDemoData} />}
 
         {tab === "audit" && role === "admin" && <AuditLogScreen shipments={shipments} openShipmentDetails={openShipmentDetails} />}
 

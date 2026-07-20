@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card, CustomerSelect, FormField, SupplierSelect } from "../components/freightComponents";
 import { calcNetProfit, calcSalesUsd, calcTotalCostUsd, getDateRangeLabel, getShipmentReportDate, money } from "../utils/freight";
 
-export function ReportsScreen({ reportFromDate, setReportFromDate, reportToDate, setReportToDate, canSeeFinance, exportDetailedReportExcel, exportDetailedReportPdf, reportData, clientReportCustomer, customers, setClientReportCustomer, customerStatement, supplierReportSupplier, suppliers, setSupplierReportSupplier, supplierStatement, agingReport, partnerStats, exportClientReportExcel, exportClientReportPdf, exportSupplierReportExcel, exportSupplierReportPdf, openShipmentDetails, activeFxRate, createBackup, downloadLocalBackup, importLocalBackup, role, resetDemoData }) {
+export function ReportsScreen({ reportFromDate, setReportFromDate, reportToDate, setReportToDate, canSeeFinance, exportDetailedReportExcel, exportDetailedReportPdf, reportData, clientReportCustomer, customers, customerStatementOptions, setClientReportCustomer, customerStatement, supplierReportSupplier, suppliers, setSupplierReportSupplier, supplierStatement, agingReport, partnerStats, exportClientReportExcel, exportClientReportPdf, exportSupplierReportExcel, exportSupplierReportPdf, openShipmentDetails, activeFxRate, createBackup, downloadLocalBackup, importLocalBackup, role, resetDemoData }) {
   const [reportView, setReportView] = useState("overview");
   const reportTabs = [
     ["overview", "Overview"],
@@ -99,7 +99,7 @@ export function ReportsScreen({ reportFromDate, setReportFromDate, reportToDate,
           </div>
           <div className="actions">
             <FormField label="Client">
-              <CustomerSelect value={clientReportCustomer} customers={[{ id: "all", name: "all" }, ...customers]} onChange={setClientReportCustomer} />
+              <CustomerSelect value={clientReportCustomer} customers={[{ id: "all", name: "all" }, ...(customerStatementOptions || customers)]} onChange={setClientReportCustomer} />
             </FormField>
             <button className="saveBtn" onClick={exportClientReportExcel}>Export Statement Excel</button>
             <button className="ghostBtn" onClick={exportClientReportPdf}>Export Statement PDF</button>
@@ -127,11 +127,11 @@ export function ReportsScreen({ reportFromDate, setReportFromDate, reportToDate,
               </tr>
             </thead>
             <tbody>
-              {customerStatement.rows.map(({ shipment, invoiceUsd, collectedUsd, remainingUsd, status, invoices, payments }) => (
-                <tr key={shipment.id} onClick={() => openShipmentDetails(shipment)}>
+              {customerStatement.rows.map(({ id, shipment, customer, invoiceUsd, collectedUsd, remainingUsd, status, invoices, payments }) => (
+                <tr key={id || `${shipment.id}-${customer}`} onClick={() => openShipmentDetails(shipment)}>
                   <td>{getShipmentReportDate(shipment) ? new Date(getShipmentReportDate(shipment)).toISOString().slice(0, 10) : "Not set"}</td>
                   <td>{shipment.id}</td>
-                  <td>{shipment.customer}</td>
+                  <td>{customer || shipment.customer}</td>
                   <td>{shipment.pol} - {shipment.pod}</td>
                   <td><span className="badge">{status}</span></td>
                   <td>{money(invoiceUsd)}</td>
@@ -158,11 +158,11 @@ export function ReportsScreen({ reportFromDate, setReportFromDate, reportToDate,
               </tr>
             </thead>
             <tbody>
-              {customerStatement.payments.map(({ shipment, payment, amountUsd }) => (
-                <tr key={payment.id} onClick={() => openShipmentDetails(shipment)}>
+              {customerStatement.payments.map(({ shipment, customer, payment, amountUsd }) => (
+                <tr key={`${shipment.id}-${customer}-${payment.id}`} onClick={() => openShipmentDetails(shipment)}>
                   <td>{payment.paidDate || "Not set"}</td>
                   <td>{shipment.id}</td>
-                  <td>{shipment.customer || "Not set"}</td>
+                  <td>{customer || payment.company || shipment.customer || "Not set"}</td>
                   <td>{money(Number(payment.amount || 0), payment.currency || "USD")}</td>
                   <td><b>{money(amountUsd)}</b></td>
                   <td>{payment.note || "-"}</td>
