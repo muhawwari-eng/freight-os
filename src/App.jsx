@@ -1007,11 +1007,13 @@ export default function App() {
   }
 
   const customerStatement = useMemo(() => {
-    const rows = reportData.shipments.flatMap((shipment) => {
+    const rows = shipments.flatMap((shipment) => {
       const ledger = getShipmentFinancialLedger(shipment, activeFxRate);
       const invoicesByCustomer = new Map();
 
       ledger.saleRows.forEach((invoice) => {
+        const invoiceDate = invoice.invoiceDate || getShipmentReportDate(shipment);
+        if (!isDateInRange(invoiceDate, reportFromDate, reportToDate)) return;
         const customer = invoice.party || shipment.customer || "Unknown Customer";
         if (clientReportCustomer !== "all" && customer !== clientReportCustomer) return;
         const row = invoicesByCustomer.get(customer) || {
@@ -1052,11 +1054,11 @@ export default function App() {
       },
       { rows: [], invoices: [], payments: [], shipments: shipmentIds.size, invoiceUsd: 0, collectedUsd: 0, remainingUsd: 0 }
     );
-  }, [reportData.shipments, clientReportCustomer, activeFxRate]);
+  }, [shipments, clientReportCustomer, activeFxRate, reportFromDate, reportToDate]);
 
   const customerStatementOptions = useMemo(() => {
     const optionsByName = new Map(customers.map((customer) => [customer.name, customer]));
-    reportData.shipments.forEach((shipment) => {
+    shipments.forEach((shipment) => {
       getShipmentFinancialLedger(shipment, activeFxRate).saleRows.forEach((invoice) => {
         const name = invoice.party || shipment.customer;
         if (name && !optionsByName.has(name)) {
@@ -1065,7 +1067,7 @@ export default function App() {
       });
     });
     return Array.from(optionsByName.values()).sort((left, right) => String(left.name).localeCompare(String(right.name), undefined, { sensitivity: "base" }));
-  }, [activeFxRate, customers, reportData.shipments]);
+  }, [activeFxRate, customers, shipments]);
 
   const supplierStatement = useMemo(() => {
     const matchesSupplier = (row) => {
