@@ -12,7 +12,7 @@ export function getOwnedItemId(item, fallbackPrefix = "ITEM") {
   return String(item?.id || item?.code || `${fallbackPrefix}-${Date.now()}`);
 }
 
-export async function saveOwnedRows(tableName, ownerId, rows, fallbackPrefix) {
+export async function saveOwnedRows(tableName, ownerId, rows, fallbackPrefix, options = {}) {
   const byId = new Map();
 
   rows.forEach((row, index) => {
@@ -32,6 +32,19 @@ export async function saveOwnedRows(tableName, ownerId, rows, fallbackPrefix) {
   });
 
   const cleanRows = Array.from(byId.values());
+
+  if (cleanRows.length === 0 && !options.allowEmptyReplace) {
+    const { count, error: countError } = await supabase
+      .from(tableName)
+      .select("item_id", { count: "exact", head: true })
+      .eq("owner_id", ownerId);
+
+    if (countError) throw countError;
+    if ((count || 0) > 0) {
+      throw new Error(`Refusing to replace ${tableName} with an empty list.`);
+    }
+    return;
+  }
 
   // Replace current user rows safely.
   // Upsert prevents duplicate key errors when default rows already exist online.

@@ -50,6 +50,22 @@ function buildLocalTransportSupplier(name, note = "Added automatically from Loca
   };
 }
 
+function readLocalUserRows(ownerId, key, normalizer = (item) => item) {
+  try {
+    const saved = localStorage.getItem(`freight_${key}_${ownerId}`);
+    const rows = saved ? JSON.parse(saved) : [];
+    return Array.isArray(rows) ? rows.map(normalizer) : [];
+  } catch (error) {
+    console.warn(`Could not read local ${key}:`, error);
+    return [];
+  }
+}
+
+function readBackupRows(backup, key, normalizer = (item) => item) {
+  const rows = Array.isArray(backup?.data?.[key]) ? backup.data[key] : [];
+  return rows.map(normalizer);
+}
+
 export default function App() {
   const [shipments, setShipments] = useState([]);
 
@@ -209,7 +225,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (user?.id) localStorage.setItem(`freight_shipments_${user.id}`, JSON.stringify(shipments));
+    if (user?.id && onlineDataLoaded) localStorage.setItem(`freight_shipments_${user.id}`, JSON.stringify(shipments));
     const timer = setTimeout(() => {
       setSaveStatus(onlineDataLoaded ? "Saved online" : "Saved locally");
     }, 0);
@@ -225,38 +241,60 @@ export default function App() {
   }, [appSettings]);
 
   useEffect(() => {
-    if (user?.id) localStorage.setItem(`freight_customers_${user.id}`, JSON.stringify(customers));
-  }, [customers, user?.id]);
+    if (user?.id && onlineDataLoaded) localStorage.setItem(`freight_customers_${user.id}`, JSON.stringify(customers));
+  }, [customers, user?.id, onlineDataLoaded]);
 
   useEffect(() => {
-    if (user?.id) localStorage.setItem(`freight_suppliers_${user.id}`, JSON.stringify(suppliers));
-  }, [suppliers, user?.id]);
+    if (user?.id && sharedSuppliersLoaded) localStorage.setItem(`freight_suppliers_${user.id}`, JSON.stringify(suppliers));
+  }, [suppliers, user?.id, sharedSuppliersLoaded]);
 
   useEffect(() => {
-    if (user?.id) localStorage.setItem(`freight_ports_${user.id}`, JSON.stringify(ports));
-  }, [ports, user?.id]);
+    if (user?.id && sharedPortsLoaded) localStorage.setItem(`freight_ports_${user.id}`, JSON.stringify(ports));
+  }, [ports, user?.id, sharedPortsLoaded]);
 
   async function loadOwnedData(ownerId) {
     setSaveStatus("Loading online data...");
     setOnlineDataLoaded(false);
 
     try {
-      const [shipmentsResult, customersResult] = await Promise.all([
+      const localShipments = readLocalUserRows(ownerId, "shipments", normalizeShipment);
+      const localCustomers = readLocalUserRows(ownerId, "customers");
+
+      const [shipmentsResult, customersResult, backupsResult] = await Promise.all([
         supabase.from(ownedTables.shipments).select("item_id,data").eq("owner_id", ownerId),
         supabase.from(ownedTables.customers).select("item_id,data").eq("owner_id", ownerId),
+        supabase
+          .from(ownedTables.backups)
+          .select("backup_date,data,updated_at")
+          .eq("owner_id", ownerId)
+          .order("backup_date", { ascending: false })
+          .limit(1),
       ]);
 
       const onlineShipments = readOwnedRows(shipmentsResult, normalizeShipment);
       const onlineCustomers = readOwnedRows(customersResult);
+      if (backupsResult.error) console.warn("Could not load online backup:", backupsResult.error);
+      const latestBackup = backupsResult.error ? null : backupsResult.data?.[0] || null;
+      const backupShipments = readBackupRows(latestBackup, "shipments", normalizeShipment);
+      const backupCustomers = readBackupRows(latestBackup, "customers");
 
-      if (onlineShipments.length) setShipments(dedupeShipments(onlineShipments));
-      else setShipments([]);
+      const nextShipments = onlineShipments.length
+        ? onlineShipments
+        : localShipments.length
+          ? localShipments
+          : backupShipments;
+      const nextCustomers = onlineCustomers.length
+        ? onlineCustomers
+        : localCustomers.length
+          ? localCustomers
+          : backupCustomers;
 
-      if (onlineCustomers.length) setCustomers(onlineCustomers);
-      else setCustomers([]);
+      setShipments(dedupeShipments(nextShipments));
+      setCustomers(nextCustomers);
 
       setOnlineDataLoaded(true);
-      setSaveStatus("Saved online");
+      const recoveredRows = !onlineShipments.length && !onlineCustomers.length && (nextShipments.length || nextCustomers.length);
+      setSaveStatus(recoveredRows ? "Recovered local data - syncing online" : "Saved online");
     } catch (error) {
       console.error("Could not load online data:", error);
       setSaveStatus("Local mode - run Supabase SQL setup");
@@ -264,7 +302,7 @@ export default function App() {
     }
   }
 
-  async function loadSharedSuppliers(accessToken) {
+  async function loadSharedSuppliers(accessToken, ownerId = user?.id) {
     setSharedSuppliersLoaded(false);
     try {
       const response = await fetch("/api/shared-suppliers", {
@@ -282,13 +320,14 @@ export default function App() {
       setSharedSuppliersLoaded(true);
     } catch (error) {
       console.error("Could not load shared companies:", error);
-      setSuppliers(defaultSuppliers);
+      const localSuppliers = ownerId ? readLocalUserRows(ownerId, "suppliers") : [];
+      setSuppliers(localSuppliers.length ? localSuppliers : defaultSuppliers);
       setSharedSuppliersLoaded(false);
       setSaveStatus("Companies are local - shared sync failed");
     }
   }
 
-  async function loadSharedPorts(accessToken) {
+  async function loadSharedPorts(accessToken, ownerId = user?.id) {
     setSharedPortsLoaded(false);
     try {
       const response = await fetch("/api/shared-ports", {
@@ -309,7 +348,8 @@ export default function App() {
       setSharedPortsLoaded(true);
     } catch (error) {
       console.error("Could not load shared ports:", error);
-      setPorts(defaultWorldPorts);
+      const localPorts = ownerId ? readLocalUserRows(ownerId, "ports", (port) => ({ ...port, locationType: getLocationType(port) })) : [];
+      setPorts(localPorts.length ? localPorts : defaultWorldPorts);
       setSharedPortsLoaded(false);
       setSaveStatus("Ports are local - shared sync failed");
     }
@@ -337,13 +377,14 @@ export default function App() {
         setProfile(profileData);
         await Promise.all([
           loadOwnedData(currentUser.id),
-          loadSharedSuppliers(data.session.access_token),
-          loadSharedPorts(data.session.access_token),
+          loadSharedSuppliers(data.session.access_token, currentUser.id),
+          loadSharedPorts(data.session.access_token, currentUser.id),
         ]);
       }
     };
 
     getUserAndProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
