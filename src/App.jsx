@@ -66,6 +66,18 @@ function readBackupRows(backup, key, normalizer = (item) => item) {
   return rows.map(normalizer);
 }
 
+function cleanPartyName(name) {
+  return String(name || "").trim().replace(/\s+/g, " ");
+}
+
+function getPartyNameKey(name) {
+  return cleanPartyName(name)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ı/g, "i")
+    .toLowerCase();
+}
+
 export default function App() {
   const [shipments, setShipments] = useState([]);
 
@@ -1007,6 +1019,8 @@ export default function App() {
   }
 
   const customerStatement = useMemo(() => {
+    const customersByKey = new Map(customers.map((customer) => [getPartyNameKey(customer.name), customer]));
+    const selectedCustomerKey = getPartyNameKey(clientReportCustomer);
     const rows = shipments.flatMap((shipment) => {
       const ledger = getShipmentFinancialLedger(shipment, activeFxRate);
       const invoicesByCustomer = new Map();
@@ -1014,10 +1028,12 @@ export default function App() {
       ledger.saleRows.forEach((invoice) => {
         const invoiceDate = invoice.invoiceDate || getShipmentReportDate(shipment);
         if (!isDateInRange(invoiceDate, reportFromDate, reportToDate)) return;
-        const customer = invoice.party || shipment.customer || "Unknown Customer";
-        if (clientReportCustomer !== "all" && customer !== clientReportCustomer) return;
-        const row = invoicesByCustomer.get(customer) || {
-          id: `${shipment.id}-${customer}`,
+        const rawCustomer = cleanPartyName(invoice.party || shipment.customer || "Unknown Customer");
+        const customerKey = getPartyNameKey(rawCustomer);
+        const customer = customersByKey.get(customerKey)?.name || rawCustomer;
+        if (clientReportCustomer !== "all" && customerKey !== selectedCustomerKey) return;
+        const row = invoicesByCustomer.get(customerKey) || {
+          id: `${shipment.id}-${customerKey}`,
           shipment,
           customer,
           invoiceUsd: 0,
@@ -1033,7 +1049,7 @@ export default function App() {
         invoice.payments.forEach((payment) => {
           if (!row.payments.some((item) => item.id === payment.id)) row.payments.push(payment);
         });
-        invoicesByCustomer.set(customer, row);
+        invoicesByCustomer.set(customerKey, row);
       });
 
       return Array.from(invoicesByCustomer.values()).map((row) => ({
@@ -1054,15 +1070,16 @@ export default function App() {
       },
       { rows: [], invoices: [], payments: [], shipments: shipmentIds.size, invoiceUsd: 0, collectedUsd: 0, remainingUsd: 0 }
     );
-  }, [shipments, clientReportCustomer, activeFxRate, reportFromDate, reportToDate]);
+  }, [shipments, customers, clientReportCustomer, activeFxRate, reportFromDate, reportToDate]);
 
   const customerStatementOptions = useMemo(() => {
-    const optionsByName = new Map(customers.map((customer) => [customer.name, customer]));
+    const optionsByName = new Map(customers.map((customer) => [getPartyNameKey(customer.name), { ...customer, name: cleanPartyName(customer.name) }]));
     shipments.forEach((shipment) => {
       getShipmentFinancialLedger(shipment, activeFxRate).saleRows.forEach((invoice) => {
-        const name = invoice.party || shipment.customer;
-        if (name && !optionsByName.has(name)) {
-          optionsByName.set(name, { id: `invoice-party-${name}`, name });
+        const name = cleanPartyName(invoice.party || shipment.customer);
+        const key = getPartyNameKey(name);
+        if (name && !optionsByName.has(key)) {
+          optionsByName.set(key, { id: `invoice-party-${key}`, name });
         }
       });
     });
