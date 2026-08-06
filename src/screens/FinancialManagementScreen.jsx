@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { FormField } from "../components/freightComponents";
 import { emptyFinancialInvoiceForm, emptyFinancialPaymentForm, getLocalTodayDateKey } from "../data/defaults";
 import { generateInvoicePdf, generateProfitReportPdf } from "../services/pdf";
-import { getNextFinancialInvoiceNumber, getShipmentFinancialLedger, money, paymentAmountUsd } from "../utils/freight";
+import { getNextFinancialInvoiceNumber, getShipmentFinancialLedger, getShipmentPaymentStatus, money, paymentAmountUsd } from "../utils/freight";
 
 const expenseCategories = ["Demurage", "Bill of Lading", "Storage", "Port Charges", "Lashing"];
 const saleCategories = ["Freight Sale", ...expenseCategories, "Other Income"];
@@ -91,7 +91,7 @@ function InvoiceTable({ title, rows, canManagePayments, onEdit, onDelete, onAppr
 
 export function FinancialManagementScreen({ shipments, customers, suppliers, activeFxRate, canManagePayments, saveFinancialInvoice, deleteFinancialInvoice, approveFinancialInvoice, toggleFinancialClosed, addInvoicePayment, addAllocatedInvoicePayment, assignInvoicePayment }) {
   const [selectedShipmentId, setSelectedShipmentId] = useState("");
-  const [shipmentPickerFilters, setShipmentPickerFilters] = useState({ query: "", month: "", status: "all", customer: "all" });
+  const [shipmentPickerFilters, setShipmentPickerFilters] = useState({ query: "", month: "", status: "all", customer: "all", paymentStatus: "all" });
   const [invoiceForm, setInvoiceForm] = useState(() => newInvoiceForm(activeFxRate));
   const [editingInvoiceId, setEditingInvoiceId] = useState(null);
   const [replacingCalculatedInvoice, setReplacingCalculatedInvoice] = useState(false);
@@ -124,9 +124,11 @@ export function FinancialManagementScreen({ shipments, customers, suppliers, act
       const matchesMonth = !shipmentPickerFilters.month || shipmentMonth(item) === shipmentPickerFilters.month;
       const matchesStatus = shipmentPickerFilters.status === "all" || item.status === shipmentPickerFilters.status;
       const matchesCustomer = shipmentPickerFilters.customer === "all" || item.customer === shipmentPickerFilters.customer;
-      return matchesText && matchesMonth && matchesStatus && matchesCustomer;
+      const paymentStatus = getShipmentPaymentStatus(item, activeFxRate);
+      const matchesPayment = shipmentPickerFilters.paymentStatus === "all" || paymentStatus === shipmentPickerFilters.paymentStatus;
+      return matchesText && matchesMonth && matchesStatus && matchesCustomer && matchesPayment;
     });
-  }, [shipmentPickerFilters, sortedShipmentOptions]);
+  }, [activeFxRate, shipmentPickerFilters, sortedShipmentOptions]);
   const selectedShipmentVisible = filteredShipmentOptions.some((item) => item.id === selectedShipmentId);
   const shipmentId = selectedShipmentVisible ? selectedShipmentId : filteredShipmentOptions[0]?.id || "";
   const shipment = shipments.find((item) => item.id === shipmentId);
@@ -285,7 +287,7 @@ export function FinancialManagementScreen({ shipments, customers, suppliers, act
   }
 
   function clearShipmentPickerFilters() {
-    setShipmentPickerFilters({ query: "", month: "", status: "all", customer: "all" });
+    setShipmentPickerFilters({ query: "", month: "", status: "all", customer: "all", paymentStatus: "all" });
   }
 
   function getSuggestedInvoiceForPayment(payment) {
@@ -325,6 +327,14 @@ export function FinancialManagementScreen({ shipments, customers, suppliers, act
             <select value={shipmentPickerFilters.status} onChange={(event) => updateShipmentPickerFilter("status", event.target.value)}>
               <option value="all">All Statuses</option>
               {statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+            </select>
+          </FormField>
+          <FormField label="Payment">
+            <select value={shipmentPickerFilters.paymentStatus} onChange={(event) => updateShipmentPickerFilter("paymentStatus", event.target.value)}>
+              <option value="all">All Payments</option>
+              <option value="Unpaid">Unpaid</option>
+              <option value="Partially Paid">Partially Paid</option>
+              <option value="Fully Paid">Fully Paid</option>
             </select>
           </FormField>
         </div>
