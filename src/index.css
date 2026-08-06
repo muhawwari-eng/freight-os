@@ -788,6 +788,102 @@ button {
   padding: 14px;
 }
 
+.reportsWorkspace {
+  display: grid;
+  gap: 18px;
+}
+
+.reportsHeader,
+.reportSectionHead,
+.reportUtilityBar {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.reportsHeader h2,
+.reportSectionHead h3 {
+  margin: 0;
+}
+
+.reportsHeader p {
+  color: #93c5fd;
+  margin: 6px 0 0;
+}
+
+.reportsFilters {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(150px, 180px)) auto;
+}
+
+.reportTabs {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.reportTabs button {
+  align-items: center;
+  background: rgba(14, 39, 65, 0.66);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  border-radius: 12px;
+  color: #dbeafe;
+  display: flex;
+  justify-content: space-between;
+  min-height: 58px;
+  padding: 12px;
+  text-align: left;
+}
+
+.reportTabs button.active {
+  background: rgba(14, 165, 233, 0.18);
+  border-color: rgba(125, 211, 252, 0.62);
+  color: #f8fafc;
+}
+
+.reportTabs button b {
+  background: rgba(56, 189, 248, 0.16);
+  border-radius: 999px;
+  color: #7dd3fc;
+  min-width: 30px;
+  padding: 5px 8px;
+  text-align: center;
+}
+
+.reportSection {
+  display: grid;
+  gap: 14px;
+}
+
+.reportTableWrap table {
+  margin-top: 0;
+}
+
+.reportInsights {
+  color: #93c5fd;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.reportInsights span {
+  background: rgba(14, 39, 65, 0.66);
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  border-radius: 999px;
+  padding: 8px 12px;
+}
+
+.reportUpload {
+  display: inline-block;
+}
+
+.reportUpload input {
+  display: none;
+}
+
 .operationalPage {
   display: grid;
   gap: 18px;
@@ -1333,6 +1429,10 @@ td {
   .financeForms {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .reportTabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 720px) {
@@ -1356,6 +1456,18 @@ td {
 
   .trackingGrid {
     grid-template-columns: 1fr;
+  }
+
+  .reportTabs,
+  .reportsFilters {
+    grid-template-columns: 1fr;
+  }
+
+  .reportsHeader,
+  .reportSectionHead,
+  .reportUtilityBar {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 
