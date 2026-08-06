@@ -2435,7 +2435,8 @@ function addShipmentFromForm(e) {
       const prior = getFinancialInvoices(shipment).find((row) => row.id === editingInvoiceId);
       const invoiceNo = editingInvoiceId ? prior?.invoiceNo : getNextFinancialInvoiceNumber(shipment, invoiceForm.invoiceType);
       const amount = Number(invoiceForm.amount || 0);
-      const approvalStatus = invoiceForm.approvalStatus || (invoiceForm.invoiceType === "Purchase" && amount >= 1000 ? "Pending" : "Approved");
+      const quantity = Math.max(Number(invoiceForm.quantity || 1) || 1, 1);
+      const approvalStatus = invoiceForm.approvalStatus || (invoiceForm.invoiceType === "Purchase" && amount * quantity >= 1000 ? "Pending" : "Approved");
       const invoice = {
         ...invoiceForm,
         id: editingInvoiceId || `INV-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -2444,6 +2445,7 @@ function addShipmentFromForm(e) {
         adjustmentKind: invoiceForm.adjustmentKind || "Invoice",
         approvalStatus,
         amount,
+        quantity,
         taxRate: Number(invoiceForm.taxRate || 0),
         fxRate: Number(invoiceForm.fxRate || activeFxRate || 1),
         createdAt: editingInvoiceId ? undefined : new Date().toISOString(),

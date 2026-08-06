@@ -272,7 +272,8 @@ export function paymentAmountUsd(payment, shipment, exchangeRate) {
 }
 
 export function invoiceTaxAmount(invoice) {
-  const amount = Number(invoice.amount || 0);
+  const quantity = Number(invoice.quantity || 1) || 1;
+  const amount = Number(invoice.amount || 0) * quantity;
   const taxRate = Number(invoice.taxRate || 0);
   return amount * taxRate / 100;
 }
@@ -282,7 +283,8 @@ export function getInvoiceSign(invoice) {
 }
 
 export function financialInvoiceAmountUsd(invoice, shipment, exchangeRate) {
-  const amount = Number(invoice.amount || 0) + invoiceTaxAmount(invoice);
+  const quantity = Number(invoice.quantity || 1) || 1;
+  const amount = (Number(invoice.amount || 0) * quantity) + invoiceTaxAmount(invoice);
   const signedAmount = amount * getInvoiceSign(invoice);
   if ((invoice.currency || "USD") !== "USD") return signedAmount / getRate({ fx: invoice.fxRate || shipment?.fx }, exchangeRate);
   return signedAmount;
@@ -395,7 +397,7 @@ export function getShipmentFinancialLedger(shipment, exchangeRate) {
     });
     const appliedPayments = [...linked, ...allocated, ...compatibleUnlinked];
     const totalUsd = financialInvoiceAmountUsd(invoice, shipment, exchangeRate);
-    const taxUsd = financialInvoiceAmountUsd({ ...invoice, amount: invoiceTaxAmount(invoice), taxRate: 0 }, shipment, exchangeRate);
+    const taxUsd = financialInvoiceAmountUsd({ ...invoice, amount: invoiceTaxAmount(invoice), quantity: 1, taxRate: 0 }, shipment, exchangeRate);
     const paidUsd = appliedPayments.reduce((sum, payment) => sum + Number(payment.appliedAmountUsd ?? paymentAmountUsd(payment, shipment, exchangeRate)), 0);
     const remainingUsd = Math.max(totalUsd - paidUsd, 0);
     return {

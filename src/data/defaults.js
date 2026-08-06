@@ -475,6 +475,7 @@ export const emptyFinancialInvoiceForm = {
   invoiceDate: getLocalTodayDateKey(),
   dueDate: "",
   party: "",
+  quantity: "1",
   amount: "",
   taxRate: "0",
   currency: "USD",
