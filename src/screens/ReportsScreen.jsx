@@ -34,7 +34,7 @@ function ReportSection({ title, children, actions }) {
   );
 }
 
-export function ReportsScreen({ shipments, reportFromDate, setReportFromDate, reportToDate, setReportToDate, canSeeFinance, exportDetailedReportExcel, exportDetailedReportPdf, reportData, clientReportCustomer, customers, customerStatementOptions, setClientReportCustomer, customerStatement, supplierReportSupplier, suppliers, setSupplierReportSupplier, supplierStatement, agingReport, partnerStats, exportClientReportExcel, exportClientReportPdf, exportSupplierReportExcel, exportSupplierReportPdf, openShipmentDetails, activeFxRate, createBackup, downloadLocalBackup, importLocalBackup, role, resetDemoData }) {
+export function ReportsScreen({ shipments, reportFromDate, setReportFromDate, reportToDate, setReportToDate, canSeeFinance, exportDetailedReportExcel, exportDetailedReportPdf, reportData, clientReportCustomer, customers, customerStatementOptions, setClientReportCustomer, customerStatement, supplierReportSupplier, suppliers, setSupplierReportSupplier, supplierStatement, agingReport, partnerStats, exportClientReportExcel, exportClientReportPdf, exportSupplierReportExcel, exportSupplierReportPdf, openShipmentDetails, activeFxRate }) {
   const [reportView, setReportView] = useState(canSeeFinance ? "customer" : "shipments");
   const rangeLabel = getDateRangeLabel(reportFromDate, reportToDate);
 
@@ -303,15 +303,6 @@ export function ReportsScreen({ shipments, reportFromDate, setReportFromDate, re
         </div>
       )}
 
-      <div className="reportUtilityBar">
-        {canSeeFinance && <button className="saveBtn" onClick={() => createBackup(true)}>Create Manual Backup</button>}
-        <button className="ghostBtn" onClick={downloadLocalBackup}>Download Local Backup</button>
-        <label className="ghostBtn reportUpload">
-          Import Local Backup
-          <input type="file" accept="application/json,.json" onChange={importLocalBackup} />
-        </label>
-        {role === "admin" && <button className="dangerBtn" onClick={resetDemoData}>Reset Demo Data</button>}
-      </div>
     </section>
   );
 }

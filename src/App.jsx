@@ -5,7 +5,7 @@ import autoTable from "jspdf-autotable";
 import Login from "./Login";
 import { supabase } from "./supabase";
 import { DEFAULT_OPERATION_EMAIL, EMAILJS_PUBLIC_KEY, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, REMINDER_EMAIL_ENDPOINT } from "./config/email";
-import { defaultFxSettings, defaultShipments, defaultSuppliers, defaultWorldPorts, emptyBookingForm, emptyCustomerForm, emptyEditForm, emptyExpenseForm, emptyPaymentForm, emptyPortForm, emptyReceivableForm, emptySupplierForm, emptyTaskForm, emptyTransportForm, getLocalTodayDateKey, getLocationType, getNextCustomerId, getNextSupplierId } from "./data/defaults";
+import { defaultFxSettings, defaultSuppliers, defaultWorldPorts, emptyBookingForm, emptyCustomerForm, emptyEditForm, emptyExpenseForm, emptyPaymentForm, emptyPortForm, emptyReceivableForm, emptySupplierForm, emptyTaskForm, emptyTransportForm, getLocalTodayDateKey, getLocationType, getNextCustomerId, getNextSupplierId } from "./data/defaults";
 import { addDays, buildReminderMessage, calcExpensesUsd, calcGrossProfit, calcNetProfit, calcSalesUsd, calcTotalCostUsd, dedupeShipments, getAgingReport, getCurrentMonthKey, getDateRangeLabel, getDaysLeft, getExpenses, getFinancialInvoices, getInvoicePaymentType, getMonthKey, getNextFinancialInvoiceNumber, getNextShipmentId, getPaymentSummary, getPayments, getRate, getReminderEventsForShipment, getReminderSentKey, getShipmentBillableQty, getShipmentDocuments, getShipmentFinancialLedger, getShipmentInternalNotes, getShipmentLoadDescription, getShipmentPaymentStatus, getShipmentReportDate, getShipmentShareLinks, getShipmentUnitLabel, getTaskStatus, getTasks, getTransports, isAirShipment, isDateInRange, isFclShipment, isFullTruckShipment, isReminderAlreadySent, money, normalizeShipment, paymentAmountUsd, safeFileName, toDateKey } from "./utils/freight";
 import { ownedTables, readOwnedRows, saveOwnedRows } from "./services/ownedStorage";
 import { getTitle } from "./utils/titles";
@@ -2886,13 +2886,6 @@ function addShipmentFromForm(e) {
     );
   }
 
-  function resetDemoData() {
-    if (!confirm("Reset all data to demo shipments?")) return;
-    setShipments(dedupeShipments(defaultShipments));
-    setSelectedShipment(null);
-    setTab("dashboard");
-  }
-
   async function createBackup(manual = false) {
     if (!user?.id) return;
 
@@ -3087,7 +3080,6 @@ function importLocalBackup(event) {
             <span>✅ Arrived {totals.arrived}</span>
           </div>
         )}
-        <button className="ghostBtn" onClick={downloadLocalBackup}>Download Local Backup</button>
         <button className="logoutBtn" onClick={signOut}>Logout</button>
       </aside>
 
@@ -3143,11 +3135,11 @@ function importLocalBackup(event) {
 
         {tab === "ports" && <PortsScreen canEditCore={canEditCore} addPort={addPort} portForm={portForm} updatePort={updatePort} ports={ports} role={role} deletePort={deletePort} />}
 
-        {tab === "reports" && <ReportsScreen shipments={shipments} reportFromDate={reportFromDate} setReportFromDate={setReportFromDate} reportToDate={reportToDate} setReportToDate={setReportToDate} canSeeFinance={canSeeFinance} exportDetailedReportExcel={exportDetailedReportExcel} exportDetailedReportPdf={exportDetailedReportPdf} reportData={reportData} clientReportCustomer={clientReportCustomer} customers={customers} customerStatementOptions={customerStatementOptions} setClientReportCustomer={setClientReportCustomer} customerStatement={customerStatement} supplierReportSupplier={supplierReportSupplier} suppliers={suppliers} setSupplierReportSupplier={setSupplierReportSupplier} supplierStatement={supplierStatement} agingReport={agingReport} partnerStats={partnerStats} exportClientReportExcel={exportClientReportExcel} exportClientReportPdf={exportClientReportPdf} exportSupplierReportExcel={exportSupplierReportExcel} exportSupplierReportPdf={exportSupplierReportPdf} openShipmentDetails={openShipmentDetails} activeFxRate={activeFxRate} createBackup={createBackup} downloadLocalBackup={downloadLocalBackup} importLocalBackup={importLocalBackup} role={role} resetDemoData={resetDemoData} />}
+        {tab === "reports" && <ReportsScreen shipments={shipments} reportFromDate={reportFromDate} setReportFromDate={setReportFromDate} reportToDate={reportToDate} setReportToDate={setReportToDate} canSeeFinance={canSeeFinance} exportDetailedReportExcel={exportDetailedReportExcel} exportDetailedReportPdf={exportDetailedReportPdf} reportData={reportData} clientReportCustomer={clientReportCustomer} customers={customers} customerStatementOptions={customerStatementOptions} setClientReportCustomer={setClientReportCustomer} customerStatement={customerStatement} supplierReportSupplier={supplierReportSupplier} suppliers={suppliers} setSupplierReportSupplier={setSupplierReportSupplier} supplierStatement={supplierStatement} agingReport={agingReport} partnerStats={partnerStats} exportClientReportExcel={exportClientReportExcel} exportClientReportPdf={exportClientReportPdf} exportSupplierReportExcel={exportSupplierReportExcel} exportSupplierReportPdf={exportSupplierReportPdf} openShipmentDetails={openShipmentDetails} activeFxRate={activeFxRate} />}
 
         {tab === "audit" && role === "admin" && <AuditLogScreen shipments={shipments} openShipmentDetails={openShipmentDetails} />}
 
-        {tab === "settings" && role === "admin" && <SettingsScreen appSettings={appSettings} updateSettings={updateSettings} />}
+        {tab === "settings" && role === "admin" && <SettingsScreen appSettings={appSettings} updateSettings={updateSettings} createBackup={createBackup} downloadLocalBackup={downloadLocalBackup} importLocalBackup={importLocalBackup} />}
 
         {tab === "api" && <ApiScreen shipments={shipments} canEditOperation={canEditOperation} subscribeShipmentTracking={subscribeShipmentTracking} refreshTrackingUpdates={refreshTrackingUpdates} />}
 

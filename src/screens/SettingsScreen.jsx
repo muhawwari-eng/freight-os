@@ -1,6 +1,6 @@
 import { FormField } from "../components/freightComponents";
 
-export function SettingsScreen({ appSettings, updateSettings }) {
+export function SettingsScreen({ appSettings, updateSettings, createBackup, downloadLocalBackup, importLocalBackup }) {
   return (
           <section className="panel">
             <div className="panelHead">
@@ -55,6 +55,18 @@ export function SettingsScreen({ appSettings, updateSettings }) {
             <div className="note mt">
               <h3>Reminder Rules</h3>
               <p>Automatic reminders are sent once per day when an admin or operation user opens the app. Each event uses the day offsets above, and shipment files use Supabase Storage when the bucket is available.</p>
+            </div>
+            <div className="note mt">
+              <h3>Data & Backup</h3>
+              <p>Use these tools before large imports, account moves, or finance audits.</p>
+              <div className="reportUtilityBar mt">
+                <button className="saveBtn" type="button" onClick={() => createBackup(true)}>Create Manual Backup</button>
+                <button className="ghostBtn" type="button" onClick={downloadLocalBackup}>Download Local Backup</button>
+                <label className="ghostBtn reportUpload">
+                  Import Local Backup
+                  <input type="file" accept="application/json,.json" onChange={importLocalBackup} />
+                </label>
+              </div>
             </div>
           </section>
 
