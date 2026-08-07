@@ -36,6 +36,7 @@ function ReportSection({ title, children, actions }) {
 
 export function ReportsScreen({ shipments, reportFromDate, setReportFromDate, reportToDate, setReportToDate, canSeeFinance, exportDetailedReportExcel, exportDetailedReportPdf, reportData, clientReportCustomer, customers, customerStatementOptions, setClientReportCustomer, customerStatement, supplierReportSupplier, suppliers, setSupplierReportSupplier, supplierStatement, agingReport, partnerStats, exportClientReportExcel, exportClientReportPdf, exportSupplierReportExcel, exportSupplierReportPdf, openShipmentDetails, activeFxRate }) {
   const [reportView, setReportView] = useState(canSeeFinance ? "customer" : "shipments");
+  const [unpaidFilters, setUnpaidFilters] = useState({ type: "all", category: "all", party: "all" });
   const rangeLabel = getDateRangeLabel(reportFromDate, reportToDate);
 
   const invoiceRows = useMemo(() => {
@@ -58,6 +59,29 @@ export function ReportsScreen({ shipments, reportFromDate, setReportFromDate, re
   const unpaidRows = useMemo(() => invoiceRows
     .filter((row) => row.invoice.remainingUsd > 0.01)
     .sort((left, right) => right.invoice.remainingUsd - left.invoice.remainingUsd), [invoiceRows]);
+
+  const unpaidFilterOptions = useMemo(() => {
+    const categories = new Set();
+    const parties = new Set();
+    unpaidRows.forEach((row) => {
+      if (row.invoice.category) categories.add(row.invoice.category);
+      if (row.party) parties.add(row.party);
+    });
+    const sortByName = (left, right) => String(left).localeCompare(String(right), undefined, { sensitivity: "base" });
+    return {
+      categories: Array.from(categories).sort(sortByName),
+      parties: Array.from(parties).sort(sortByName),
+    };
+  }, [unpaidRows]);
+
+  const filteredUnpaidRows = useMemo(() => {
+    return unpaidRows.filter((row) => {
+      const matchesType = unpaidFilters.type === "all" || row.flow === unpaidFilters.type;
+      const matchesCategory = unpaidFilters.category === "all" || row.invoice.category === unpaidFilters.category;
+      const matchesParty = unpaidFilters.party === "all" || row.party === unpaidFilters.party;
+      return matchesType && matchesCategory && matchesParty;
+    });
+  }, [unpaidFilters, unpaidRows]);
 
   const paymentRows = useMemo(() => {
     return shipments.flatMap((shipment) => getPayments(shipment)
@@ -209,11 +233,35 @@ export function ReportsScreen({ shipments, reportFromDate, setReportFromDate, re
       {reportView === "unpaid" && canSeeFinance && (
         <ReportSection title="Unpaid Invoices">
           <section className="stats compactStats">
-            <Card icon="#" title="Open Invoices" value={unpaidRows.length} />
-            <Card icon="$" title="Receivable" value={money(unpaidRows.filter((row) => row.invoice.invoiceType === "Sale").reduce((sum, row) => sum + row.invoice.remainingUsd, 0))} />
-            <Card icon="$" title="Payable" value={money(unpaidRows.filter((row) => row.invoice.invoiceType === "Purchase").reduce((sum, row) => sum + row.invoice.remainingUsd, 0))} />
-            <Card icon="$" title="Net Exposure" value={money(unpaidRows.reduce((sum, row) => sum + (row.invoice.invoiceType === "Sale" ? row.invoice.remainingUsd : -row.invoice.remainingUsd), 0))} />
+            <Card icon="#" title="Open Invoices" value={filteredUnpaidRows.length} />
+            <Card icon="$" title="Receivable" value={money(filteredUnpaidRows.filter((row) => row.invoice.invoiceType === "Sale").reduce((sum, row) => sum + row.invoice.remainingUsd, 0))} />
+            <Card icon="$" title="Payable" value={money(filteredUnpaidRows.filter((row) => row.invoice.invoiceType === "Purchase").reduce((sum, row) => sum + row.invoice.remainingUsd, 0))} />
+            <Card icon="$" title="Net Exposure" value={money(filteredUnpaidRows.reduce((sum, row) => sum + (row.invoice.invoiceType === "Sale" ? row.invoice.remainingUsd : -row.invoice.remainingUsd), 0))} />
           </section>
+          <div className="reportsFilters unpaidFilters">
+            <FormField label="Type">
+              <select value={unpaidFilters.type} onChange={(event) => setUnpaidFilters((previous) => ({ ...previous, type: event.target.value, party: "all" }))}>
+                <option value="all">All Types</option>
+                <option value="Customer">Customer Receivable</option>
+                <option value="Supplier">Supplier Payable</option>
+              </select>
+            </FormField>
+            <FormField label="Category">
+              <select value={unpaidFilters.category} onChange={(event) => setUnpaidFilters((previous) => ({ ...previous, category: event.target.value }))}>
+                <option value="all">All Categories</option>
+                {unpaidFilterOptions.categories.map((category) => <option key={category} value={category}>{category}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Name">
+              <select value={unpaidFilters.party} onChange={(event) => setUnpaidFilters((previous) => ({ ...previous, party: event.target.value }))}>
+                <option value="all">All Names</option>
+                {unpaidFilterOptions.parties
+                  .filter((party) => unpaidFilters.type === "all" || unpaidRows.some((row) => row.party === party && row.flow === unpaidFilters.type))
+                  .map((party) => <option key={party} value={party}>{party}</option>)}
+              </select>
+            </FormField>
+            <button className="ghostBtn" type="button" onClick={() => setUnpaidFilters({ type: "all", category: "all", party: "all" })}>Clear</button>
+          </div>
           <ReportTable
             columns={[
               { key: "date", label: "Invoice Date" },
@@ -226,7 +274,7 @@ export function ReportsScreen({ shipments, reportFromDate, setReportFromDate, re
               { key: "paid", label: "Paid", render: (row) => money(row.invoice.paidUsd) },
               { key: "remaining", label: "Remaining", render: (row) => <b>{money(row.invoice.remainingUsd)}</b> },
             ]}
-            rows={unpaidRows}
+            rows={filteredUnpaidRows}
             emptyText="No unpaid invoices in this date range."
             onRowClick={(row) => openShipmentDetails(row.shipment)}
           />

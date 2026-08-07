@@ -819,6 +819,10 @@ button {
   grid-template-columns: repeat(2, minmax(150px, 180px)) auto;
 }
 
+.unpaidFilters {
+  grid-template-columns: repeat(3, minmax(160px, 1fr)) auto;
+}
+
 .reportTabs {
   display: grid;
   gap: 10px;
