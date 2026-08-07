@@ -3065,10 +3065,6 @@ function importLocalBackup(event) {
           <button className={tab === "customers" ? "active" : ""} onClick={() => setTab("customers")}>👥 Customers</button>
           <button className={tab === "suppliers" ? "active" : ""} onClick={() => setTab("suppliers")}>🏢 Companies</button>
           {canEditCore && <button className={tab === "booking" ? "active" : ""} onClick={() => setTab("booking")}>+ Booking</button>}
-          <button className={tab === "transport" ? "active" : ""} onClick={() => setTab("transport")}>🚚 Local Transport</button>
-          {canSeeFinance && <button className={tab === "expenses" ? "active" : ""} onClick={() => setTab("expenses")}>💸 Expenses</button>}
-          {canSeeFinance && <button className={tab === "payments" ? "active" : ""} onClick={() => setTab("payments")}>💳 Payments</button>}
-          {canSeeFinance && <button className={tab === "receivables" ? "active" : ""} onClick={() => setTab("receivables")}>💰 Receivables</button>}
           {canSeeFinance && <button className={tab === "financialManagement" ? "active" : ""} onClick={() => setTab("financialManagement")}>▤ Financial Management</button>}
           <button className={tab === "tasks" ? "active" : ""} onClick={() => setTab("tasks")}>⏰ Tasks</button>
           {canSeeFinance && <button className={tab === "exchange" ? "active" : ""} onClick={() => setTab("exchange")}>💱 Exchange Rate</button>}
