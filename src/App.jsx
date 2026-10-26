@@ -3204,7 +3204,7 @@ function importLocalBackup(event) {
               </div>
             )}
           </div>
-          {canSeeFinance && <PresentationSetup ownerId={user.id} customers={customers} shipments={shipments} rate={activeFxRate} onActivate={setPresentation} />}
+{canSeeFinance && <PresentationSetup ownerId={user.id} customers={customers} suppliers={suppliers} shipments={shipments} rate={activeFxRate} onActivate={setPresentation} />}
           {canEditCore && <button onClick={() => setTab("booking")}>+ New Shipment</button>}
         </header>
 

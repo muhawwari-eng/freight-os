@@ -17,16 +17,22 @@ export async function presentationPinHash(pin, salt) {
 }
 
 export function buildPresentationRows(shipments, rate, config) {
-  if (!config?.ownerId || !["customer", "partner"].includes(config.mode)) return [];
+  if (!config?.ownerId || !["customer", "partner", "supplier"].includes(config.mode)) return [];
+  const isSupplier = config.mode === "supplier";
   const customerKey = presentationPartyKey(config.customer);
   if (config.mode === "customer" && !customerKey) return [];
+  const supplierKey = presentationPartyKey(config.supplier);
+  if (isSupplier && !supplierKey) return [];
   return shipments.flatMap((shipment) => {
-    const saleRows = getShipmentFinancialLedger(shipment, rate).saleRows.filter((invoice) =>
-      config.mode === "partner" || presentationPartyKey(invoice.party || shipment.customer) === customerKey);
+    const ledger = getShipmentFinancialLedger(shipment, rate);
+    const saleRows = isSupplier
+      ? ledger.purchaseRows.filter((invoice) => presentationPartyKey(invoice.party) === supplierKey)
+      : ledger.saleRows.filter((invoice) => config.mode === "partner" || presentationPartyKey(invoice.party || shipment.customer) === customerKey);
+    if (isSupplier && !saleRows.length) return [];
     if (config.mode === "customer" && presentationPartyKey(shipment.customer) !== customerKey && !saleRows.length) return [];
     // Only these fields may enter the presentation UI or its export.
     return [{
-      id: shipment.id, customer: config.mode === "customer" ? config.customer : shipment.customer,
+      id: shipment.id, customer: isSupplier ? config.supplier : config.mode === "customer" ? config.customer : shipment.customer,
       booking: shipment.bookingNo || "", origin: shipment.pol || "", destination: shipment.pod || "",
       status: shipment.status || "", etd: shipment.etd || "", eta: shipment.eta || "",
       invoices: saleRows.map((invoice) => ({
