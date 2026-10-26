@@ -391,7 +391,7 @@ export function getShipmentFinancialLedger(shipment, exchangeRate) {
       .filter(Boolean);
     const compatibleInvoices = rowsByPaymentType.get(paymentType) || [];
     const compatibleUnlinked = payments.filter((payment) => {
-      if (payment.invoiceId || Array.isArray(payment.allocations) || payment.purchaseType !== paymentType) return false;
+      if (payment.detachedInvoiceId || payment.invoiceId || Array.isArray(payment.allocations) || payment.purchaseType !== paymentType) return false;
       if (compatibleInvoices.length === 1) return true;
       return String(payment.company || "").trim().toLowerCase() === String(invoice.party || "").trim().toLowerCase();
     });

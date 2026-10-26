@@ -2494,9 +2494,13 @@ function addShipmentFromForm(e) {
         return shipment;
       }
       const invoices = getFinancialInvoices(shipment).filter((invoice) => invoice.id !== invoiceId);
-      const payments = getPayments(shipment).map((payment) => (
-        payment.invoiceId === invoiceId ? { ...payment, invoiceId: "" } : payment
-      ));
+      const payments = getPayments(shipment).map((payment) => {
+        if (payment.invoiceId === invoiceId) return { ...payment, invoiceId: "", detachedInvoiceId: invoiceId };
+        if (payment.allocations?.some((allocation) => allocation.invoiceId === invoiceId)) {
+          return { ...payment, allocations: payment.allocations.filter((allocation) => allocation.invoiceId !== invoiceId), detachedInvoiceId: invoiceId };
+        }
+        return payment;
+      });
       const updated = normalizeShipment(withTimeline(
         { ...shipment, financialInvoices: invoices, payments },
         createTimelineEvent("Invoice", "Invoice deleted", invoiceId)
@@ -2548,6 +2552,28 @@ function addShipmentFromForm(e) {
       return updated;
     }));
     if (updatedSelected) setSelectedShipment(updatedSelected);
+  }
+
+  function updateFinancialPayment(shipmentId, paymentId, form) {
+    const shipment = shipments.find((item) => item.id === shipmentId);
+    if (!canManagePayments || !shipment || shipment.financialClosed) return false;
+    const original = getPayments(shipment).find((item) => item.id === paymentId);
+    const amount = Number(form.amount);
+    const fxRate = Number(form.fxRate);
+    if (!original || !Number.isFinite(amount) || amount <= 0 || !Number.isFinite(fxRate) || fxRate <= 0 || !form.paidDate) {
+      alert("Enter a positive amount, exchange rate and payment date.");
+      return false;
+    }
+    const payment = { ...original, amount, currency: form.currency, fxRate, paidDate: form.paidDate, note: form.note, updatedAt: new Date().toISOString(), updatedBy: user?.email || "unknown" };
+    const allocated = (original.allocations || []).reduce((sum, item) => sum + Number(item.amountUsd || 0), 0);
+    if (allocated > paymentAmountUsd(payment, shipment, activeFxRate) + 0.01) {
+      alert("Amount is below the allocated total. Delete this payment and record the corrected allocations.");
+      return false;
+    }
+    const update = (item) => normalizeShipment(withTimeline({ ...item, payments: getPayments(item).map((row) => row.id === paymentId ? payment : row) }, createTimelineEvent("Payment", "Payment updated", `${paymentId} | ${money(amount, payment.currency)}`)));
+    setShipments((previous) => previous.map((item) => item.id === shipmentId ? update(item) : item));
+    if (selectedShipment?.id === shipmentId) setSelectedShipment(update(shipment));
+    return true;
   }
 
   function addInvoicePayment(shipmentId, invoice, invoicePaymentForm) {
@@ -2823,6 +2849,10 @@ function addShipmentFromForm(e) {
   }
 
   function deletePayment(shipmentId, paymentId) {
+    if (shipments.find((item) => item.id === shipmentId)?.financialClosed) {
+      alert("Reopen this financial file before deleting payments.");
+      return;
+    }
     if (!canManagePayments) {
       alert("Only admin can delete payments.");
       return;
@@ -3123,7 +3153,7 @@ function importLocalBackup(event) {
 
         {tab === "receivables" && canSeeFinance && <ReceivablesScreen canManagePayments={canManagePayments} addReceivableToShipment={addReceivableToShipment} receivableForm={receivableForm} updateReceivable={updateReceivable} shipments={shipments} activeFxRate={activeFxRate} deletePayment={deletePayment} openShipmentDetails={openShipmentDetails} />}
 
-        {tab === "financialManagement" && canSeeFinance && <FinancialManagementScreen shipments={shipments} customers={customers} suppliers={suppliers} activeFxRate={activeFxRate} canManagePayments={canManagePayments} saveFinancialInvoice={saveFinancialInvoice} deleteFinancialInvoice={deleteFinancialInvoice} approveFinancialInvoice={approveFinancialInvoice} toggleFinancialClosed={toggleFinancialClosed} addInvoicePayment={addInvoicePayment} addAllocatedInvoicePayment={addAllocatedInvoicePayment} assignInvoicePayment={assignInvoicePayment} />}
+        {tab === "financialManagement" && canSeeFinance && <FinancialManagementScreen updateFinancialPayment={updateFinancialPayment} deletePayment={deletePayment} shipments={shipments} customers={customers} suppliers={suppliers} activeFxRate={activeFxRate} canManagePayments={canManagePayments} saveFinancialInvoice={saveFinancialInvoice} deleteFinancialInvoice={deleteFinancialInvoice} approveFinancialInvoice={approveFinancialInvoice} toggleFinancialClosed={toggleFinancialClosed} addInvoicePayment={addInvoicePayment} addAllocatedInvoicePayment={addAllocatedInvoicePayment} assignInvoicePayment={assignInvoicePayment} />}
 
         {tab === "tasks" && <TasksScreen canEditOperation={canEditOperation} checkAndSendReminders={checkAndSendReminders} reminderRunning={reminderRunning} taskFilter={taskFilter} setTaskFilter={setTaskFilter} taskDashboard={taskDashboard} addTaskToShipment={addTaskToShipment} taskForm={taskForm} updateTask={updateTask} shipments={shipments} selectedTaskShipment={selectedTaskShipment} notifications={notifications} clearNotifications={clearNotifications} allTasks={allTasks} toggleTaskStatus={toggleTaskStatus} role={role} deleteTask={deleteTask} />}
 

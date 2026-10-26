@@ -2,11 +2,46 @@ import { useMemo, useState } from "react";
 import { FormField } from "../components/freightComponents";
 import { emptyFinancialInvoiceForm, emptyFinancialPaymentForm, getLocalTodayDateKey } from "../data/defaults";
 import { generateInvoicePdf, generateProfitReportPdf, generateReceiptPdf } from "../services/pdf";
-import { getNextFinancialInvoiceNumber, getShipmentFinancialLedger, getShipmentPaymentStatus, money, paymentAmountUsd } from "../utils/freight";
+import { getNextFinancialInvoiceNumber, getPayments, getShipmentFinancialLedger, getShipmentPaymentStatus, money, paymentAmountUsd } from "../utils/freight";
 
 const expenseCategories = ["Demurage", "Bill of Lading", "Storage", "Port Charges", "Lashing"];
 const saleCategories = ["Freight Sale", ...expenseCategories, "Other Income"];
 const purchaseCategories = ["Ocean Freight", "Local Transport", "Expense", ...expenseCategories, "Other"];
+
+function PaymentRecords({ shipment, activeFxRate, canManagePayments, onSave, onDelete }) {
+  const [draft, setDraft] = useState(null);
+  const payments = getPayments(shipment);
+  const update = (field, value) => setDraft((previous) => ({ ...previous, [field]: value }));
+  return (
+    <div className="financeLedger">
+      <h3>Payment Records</h3>
+      <div className="tableWrap"><table>
+        <thead><tr><th>Date</th><th>Party</th><th>Type</th><th>Amount</th><th>USD</th><th>Action</th></tr></thead>
+        <tbody>{payments.map((payment) => <tr key={payment.id}>
+          <td>{payment.paidDate}</td><td>{payment.company}</td><td>{payment.purchaseType}</td>
+          <td>{money(payment.amount, payment.currency || "USD")}</td><td>{money(paymentAmountUsd(payment, shipment, activeFxRate))}</td>
+          <td><div className="actions">
+            {canManagePayments && <><button type="button" className="ghostBtn" disabled={shipment.financialClosed} onClick={() => setDraft({ ...payment, fxRate: payment.fxRate || activeFxRate })}>Edit</button>
+              <button type="button" className="dangerBtn" disabled={shipment.financialClosed} onClick={() => onDelete(shipment.id, payment.id)}>Delete</button></>}
+            {payment.purchaseType === "Customer Receipt" && <button type="button" className="ghostBtn" onClick={() => generateReceiptPdf(shipment, payment, activeFxRate)}>Receipt</button>}
+          </div></td>
+        </tr>)}
+        {!payments.length && <tr><td colSpan="6">No payments recorded.</td></tr>}</tbody>
+      </table></div>
+      {draft && payments.some((payment) => payment.id === draft.id) && <form onSubmit={(event) => { event.preventDefault(); if (onSave(shipment.id, draft.id, draft)) setDraft(null); }}>
+        <h4>Edit Payment</h4>
+        <div className="formGrid">
+          <FormField label="Amount"><input required type="number" min="0.01" step="0.01" value={draft.amount} onChange={(event) => update("amount", event.target.value)} /></FormField>
+          <FormField label="Currency"><select value={draft.currency || "USD"} onChange={(event) => update("currency", event.target.value)}>{["USD", "TRY", "EUR"].map((currency) => <option key={currency}>{currency}</option>)}</select></FormField>
+          <FormField label="FX Rate to USD"><input required type="number" min="0.0001" step="0.0001" value={draft.fxRate} onChange={(event) => update("fxRate", event.target.value)} /></FormField>
+          <FormField label="Payment Date"><input required type="date" value={draft.paidDate || ""} onChange={(event) => update("paidDate", event.target.value)} /></FormField>
+          <FormField label="Note"><input value={draft.note || ""} onChange={(event) => update("note", event.target.value)} /></FormField>
+        </div>
+        <div className="actions mt"><button className="saveBtn" disabled={shipment.financialClosed}>Save Payment</button><button type="button" className="ghostBtn" onClick={() => setDraft(null)}>Cancel</button></div>
+      </form>}
+    </div>
+  );
+}
 
 function newInvoiceForm(activeFxRate) {
   return { ...emptyFinancialInvoiceForm, invoiceDate: getLocalTodayDateKey(), fxRate: String(activeFxRate) };
@@ -96,7 +131,7 @@ function InvoiceTable({ title, rows, canManagePayments, onEdit, onDelete, onAppr
   );
 }
 
-export function FinancialManagementScreen({ shipments, customers, suppliers, activeFxRate, canManagePayments, saveFinancialInvoice, deleteFinancialInvoice, approveFinancialInvoice, toggleFinancialClosed, addInvoicePayment, addAllocatedInvoicePayment, assignInvoicePayment }) {
+export function FinancialManagementScreen({ updateFinancialPayment, deletePayment, shipments, customers, suppliers, activeFxRate, canManagePayments, saveFinancialInvoice, deleteFinancialInvoice, approveFinancialInvoice, toggleFinancialClosed, addInvoicePayment, addAllocatedInvoicePayment, assignInvoicePayment }) {
   const [selectedShipmentId, setSelectedShipmentId] = useState("");
   const [shipmentPickerFilters, setShipmentPickerFilters] = useState({ query: "", month: "", status: "all", customer: "all", paymentStatus: "all" });
   const [invoiceForm, setInvoiceForm] = useState(() => newInvoiceForm(activeFxRate));
@@ -393,6 +428,7 @@ export function FinancialManagementScreen({ shipments, customers, suppliers, act
 
           <InvoiceTable title="Sales Invoices" rows={ledger.saleRows} canManagePayments={canManagePayments} onEdit={startEditInvoice} onDelete={(id) => deleteFinancialInvoice(shipment.id, id)} onApprove={(id) => approveFinancialInvoice(shipment.id, id)} onReceipt={(payment) => generateReceiptPdf(shipment, payment, activeFxRate)} />
           <InvoiceTable title="Purchase Invoices" rows={ledger.purchaseRows} canManagePayments={canManagePayments} onEdit={startEditInvoice} onDelete={(id) => deleteFinancialInvoice(shipment.id, id)} onApprove={(id) => approveFinancialInvoice(shipment.id, id)} />
+          <PaymentRecords key={shipment.id} shipment={shipment} activeFxRate={activeFxRate} canManagePayments={canManagePayments} onSave={updateFinancialPayment} onDelete={deletePayment} />
 
           {ledger.unallocatedPayments.length > 0 && (
             <div className="financeLedger">
