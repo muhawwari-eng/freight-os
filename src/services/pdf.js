@@ -3,6 +3,22 @@ import autoTable from "jspdf-autotable";
 import { COMPANY_INFO, FSC_LOGO_DATA_URL } from "../data/defaults";
 import { calcSalesUsd, getPaymentSummary, getShipmentBillableQty, getShipmentFinancialLedger, getShipmentLoadDescription, getShipmentUnitLabel, isAirShipment, isFclShipment, money, paymentAmountUsd, safeFileName } from "../utils/freight";
 
+export function generateSupplierSettlementPdf(batch) {
+  const doc = new jsPDF();
+  const payment = batch.payment;
+  doc.setFontSize(16);
+  doc.text("Supplier Payment Voucher", 14, 18);
+  doc.setFontSize(10);
+  doc.text([batch.id, payment.company, payment.paidDate, payment.method || "", payment.note || ""], 14, 28);
+  autoTable(doc, {
+    startY: 60,
+    head: [["Shipment", "Invoice", "Paid USD"]],
+    body: batch.rows.flatMap(({ shipment, payment: part }) => part.settlementInvoices.map((invoice) => [shipment.id, invoice.invoiceNo, invoice.amountUsd.toFixed(2)])),
+    foot: [["Total", "", batch.rows.reduce((sum, row) => sum + row.payment.settlementAmountUsd, 0).toFixed(2)]],
+  });
+  doc.save(batch.id + ".pdf");
+}
+
 export function getInvoiceNumber(shipment) {
   const year = new Date().getFullYear();
   const match = String(shipment?.id || "").match(/^SHP-\d{4}-(\d+)$/);

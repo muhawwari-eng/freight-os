@@ -25,6 +25,7 @@ import { SuppliersScreen } from "./screens/SuppliersScreen";
 import { PortsScreen } from "./screens/PortsScreen";
 import { ReportsScreen } from "./screens/ReportsScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
+import { supplierKey } from "./utils/supplierSettlement";
 import { ApiScreen } from "./screens/ApiScreen";
 import { PublicShareScreen } from "./screens/PublicShareScreen";
 import { AuditLogScreen } from "./screens/AuditLogScreen";
@@ -2554,10 +2555,61 @@ function addShipmentFromForm(e) {
     if (updatedSelected) setSelectedShipment(updatedSelected);
   }
 
+  function saveSupplierSettlement(party, form, plan) {
+    if (!canManagePayments) return false;
+    const rate = form.currency === "USD" ? 1 : Number(form.fxRate);
+    const totalUsd = Number(form.amount) / rate;
+    const allocated = plan.reduce((sum, row) => sum + row.amountUsd, 0);
+    if (!form.paidDate || !Number.isFinite(totalUsd) || totalUsd <= 0 || !Number.isFinite(rate) || rate <= 0 || Math.abs(totalUsd - allocated) > 0.011) return false;
+    const seen = new Set();
+    for (const row of plan) {
+      const shipment = shipments.find((item) => item.id === row.shipment.id);
+      const invoice = shipment && getShipmentFinancialLedger(shipment, activeFxRate).purchaseRows.find((item) => item.id === row.invoice.id);
+      const key = JSON.stringify([shipment?.id, invoice?.id]);
+      if (!shipment || shipment.financialClosed || !invoice || supplierKey(invoice.party) !== supplierKey(party) || !Number.isFinite(row.amountUsd) || row.amountUsd <= 0 || row.amountUsd > invoice.remainingUsd + 0.001 || seen.has(key)) {
+        alert("Invoice balances changed or a file is closed. Review the settlement again.");
+        return false;
+      }
+      seen.add(key);
+    }
+    const settlementId = "SET-" + crypto.randomUUID();
+    const update = (shipment) => {
+      const rows = plan.filter((row) => row.shipment.id === shipment.id);
+      if (!rows.length) return shipment;
+      const amountUsd = rows.reduce((sum, row) => sum + row.amountUsd, 0);
+      const payment = {
+        id: settlementId + "-" + shipment.id, settlementId, settlementAmountUsd: amountUsd,
+        settlementInvoices: rows.map((row) => ({ invoiceId: row.invoice.id, invoiceNo: row.invoice.invoiceNo, amountUsd: row.amountUsd })),
+        allocations: rows.map((row) => ({ invoiceId: row.invoice.id, amountUsd: row.amountUsd })),
+        purchaseType: "Supplier Settlement", company: party, amount: amountUsd * rate,
+        currency: form.currency, fxRate: rate, paidDate: form.paidDate, method: form.method, note: form.note,
+        createdAt: new Date().toISOString(), createdBy: user?.email || "unknown",
+      };
+      return normalizeShipment(withTimeline({ ...shipment, payments: [payment, ...getPayments(shipment)] }, createTimelineEvent("Payment", "Supplier account settled", settlementId)));
+    };
+    setShipments((previous) => previous.map(update));
+    if (selectedShipment) setSelectedShipment(update(selectedShipment));
+    return true;
+  }
+
+  function cancelSupplierSettlement(settlementId) {
+    if (!canManagePayments) return;
+    const affected = shipments.filter((shipment) => getPayments(shipment).some((payment) => payment.settlementId === settlementId));
+    if (affected.some((shipment) => shipment.financialClosed)) { alert("Reopen all affected financial files before cancelling this settlement."); return; }
+    if (!confirm("Cancel this entire supplier settlement and reopen its invoice balances?")) return;
+    const update = (shipment) => {
+      if (!getPayments(shipment).some((payment) => payment.settlementId === settlementId)) return shipment;
+      return normalizeShipment(withTimeline({ ...shipment, payments: getPayments(shipment).filter((payment) => payment.settlementId !== settlementId) }, createTimelineEvent("Payment", "Supplier settlement cancelled", settlementId)));
+    };
+    setShipments((previous) => previous.map(update));
+    if (selectedShipment) setSelectedShipment(update(selectedShipment));
+  }
+
   function updateFinancialPayment(shipmentId, paymentId, form) {
     const shipment = shipments.find((item) => item.id === shipmentId);
     if (!canManagePayments || !shipment || shipment.financialClosed) return false;
     const original = getPayments(shipment).find((item) => item.id === paymentId);
+    if (original?.settlementId) { alert("Cancel the supplier settlement and record its corrected replacement from Supplier Account Settlement."); return false; }
     const amount = Number(form.amount);
     const fxRate = Number(form.fxRate);
     if (!original || !Number.isFinite(amount) || amount <= 0 || !Number.isFinite(fxRate) || fxRate <= 0 || !form.paidDate) {
@@ -2849,6 +2901,10 @@ function addShipmentFromForm(e) {
   }
 
   function deletePayment(shipmentId, paymentId) {
+    if (getPayments(shipments.find((item) => item.id === shipmentId) || {}).some((payment) => payment.id === paymentId && payment.settlementId)) {
+      alert("Cancel this entire payment from Supplier Account Settlement.");
+      return;
+    }
     if (shipments.find((item) => item.id === shipmentId)?.financialClosed) {
       alert("Reopen this financial file before deleting payments.");
       return;
@@ -3153,7 +3209,7 @@ function importLocalBackup(event) {
 
         {tab === "receivables" && canSeeFinance && <ReceivablesScreen canManagePayments={canManagePayments} addReceivableToShipment={addReceivableToShipment} receivableForm={receivableForm} updateReceivable={updateReceivable} shipments={shipments} activeFxRate={activeFxRate} deletePayment={deletePayment} openShipmentDetails={openShipmentDetails} />}
 
-        {tab === "financialManagement" && canSeeFinance && <FinancialManagementScreen updateFinancialPayment={updateFinancialPayment} deletePayment={deletePayment} shipments={shipments} customers={customers} suppliers={suppliers} activeFxRate={activeFxRate} canManagePayments={canManagePayments} saveFinancialInvoice={saveFinancialInvoice} deleteFinancialInvoice={deleteFinancialInvoice} approveFinancialInvoice={approveFinancialInvoice} toggleFinancialClosed={toggleFinancialClosed} addInvoicePayment={addInvoicePayment} addAllocatedInvoicePayment={addAllocatedInvoicePayment} assignInvoicePayment={assignInvoicePayment} />}
+        {tab === "financialManagement" && canSeeFinance && <FinancialManagementScreen saveSupplierSettlement={saveSupplierSettlement} cancelSupplierSettlement={cancelSupplierSettlement} updateFinancialPayment={updateFinancialPayment} deletePayment={deletePayment} shipments={shipments} customers={customers} suppliers={suppliers} activeFxRate={activeFxRate} canManagePayments={canManagePayments} saveFinancialInvoice={saveFinancialInvoice} deleteFinancialInvoice={deleteFinancialInvoice} approveFinancialInvoice={approveFinancialInvoice} toggleFinancialClosed={toggleFinancialClosed} addInvoicePayment={addInvoicePayment} addAllocatedInvoicePayment={addAllocatedInvoicePayment} assignInvoicePayment={assignInvoicePayment} />}
 
         {tab === "tasks" && <TasksScreen canEditOperation={canEditOperation} checkAndSendReminders={checkAndSendReminders} reminderRunning={reminderRunning} taskFilter={taskFilter} setTaskFilter={setTaskFilter} taskDashboard={taskDashboard} addTaskToShipment={addTaskToShipment} taskForm={taskForm} updateTask={updateTask} shipments={shipments} selectedTaskShipment={selectedTaskShipment} notifications={notifications} clearNotifications={clearNotifications} allTasks={allTasks} toggleTaskStatus={toggleTaskStatus} role={role} deleteTask={deleteTask} />}
 

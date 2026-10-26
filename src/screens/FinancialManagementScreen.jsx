@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { SupplierSettlement } from "./SupplierSettlement";
 import { FormField } from "../components/freightComponents";
 import { emptyFinancialInvoiceForm, emptyFinancialPaymentForm, getLocalTodayDateKey } from "../data/defaults";
 import { generateInvoicePdf, generateProfitReportPdf, generateReceiptPdf } from "../services/pdf";
@@ -131,7 +132,7 @@ function InvoiceTable({ title, rows, canManagePayments, onEdit, onDelete, onAppr
   );
 }
 
-export function FinancialManagementScreen({ updateFinancialPayment, deletePayment, shipments, customers, suppliers, activeFxRate, canManagePayments, saveFinancialInvoice, deleteFinancialInvoice, approveFinancialInvoice, toggleFinancialClosed, addInvoicePayment, addAllocatedInvoicePayment, assignInvoicePayment }) {
+export function FinancialManagementScreen({ saveSupplierSettlement, cancelSupplierSettlement, updateFinancialPayment, deletePayment, shipments, customers, suppliers, activeFxRate, canManagePayments, saveFinancialInvoice, deleteFinancialInvoice, approveFinancialInvoice, toggleFinancialClosed, addInvoicePayment, addAllocatedInvoicePayment, assignInvoicePayment }) {
   const [selectedShipmentId, setSelectedShipmentId] = useState("");
   const [shipmentPickerFilters, setShipmentPickerFilters] = useState({ query: "", month: "", status: "all", customer: "all", paymentStatus: "all" });
   const [invoiceForm, setInvoiceForm] = useState(() => newInvoiceForm(activeFxRate));
@@ -356,6 +357,7 @@ export function FinancialManagementScreen({ updateFinancialPayment, deletePaymen
         )}
       </div>
 
+      {canManagePayments && <SupplierSettlement shipments={shipments} activeFxRate={activeFxRate} onSave={saveSupplierSettlement} onCancel={cancelSupplierSettlement} />}
       <div className="financeShipmentPicker">
         <div className="financePickerFilters">
           <FormField label="Search File"><input value={shipmentPickerFilters.query} onChange={(event) => updateShipmentPickerFilter("query", event.target.value)} placeholder="Shipment, customer, booking, route..." /></FormField>
