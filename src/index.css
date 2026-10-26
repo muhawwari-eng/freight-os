@@ -2,6 +2,22 @@
   box-sizing: border-box;
 }
 
+.presentationWorkspace { min-height: 100vh; background: #101619; color: #eef5f4; }
+.presentationBanner { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 18px 24px; background: #154b3d; border-bottom: 2px solid #6ed2a7; }
+.presentationBanner p { margin: 6px 0 0; }
+.presentationBody { max-width: 1440px; margin: auto; padding: 24px; }
+.presentationOverlay { position: fixed; inset: 0; z-index: 10000; background: #000c; display: grid; place-items: center; padding: 16px; }
+.presentationDialog { width: min(460px, 100%); max-height: 90vh; overflow: auto; padding: 24px; border-radius: 8px; background: #152326; color: #eef5f4; border: 1px solid #58716c; }
+.presentationDialog h2 { font-size: 22px; margin-top: 0; }
+.presentationDialog button, .presentationWorkspace button { border-radius: 6px; white-space: normal; }
+.presentationBody input, .presentationDialog input, .presentationDialog select { border-radius: 6px; }
+.presentationDialog .actions { flex-wrap: wrap; }
+@media (max-width: 720px) {
+  .presentationBanner { align-items: flex-start; flex-direction: column; padding: 16px; }
+  .presentationBody { padding: 16px; }
+  .presentationBody .opsMetrics { grid-template-columns: 1fr 1fr; }
+}
+
 body {
   margin: 0;
   font-family: Inter, Arial, sans-serif;

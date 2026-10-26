@@ -25,6 +25,8 @@ import { SuppliersScreen } from "./screens/SuppliersScreen";
 import { PortsScreen } from "./screens/PortsScreen";
 import { ReportsScreen } from "./screens/ReportsScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
+import { PresentationScreen, PresentationSetup } from "./screens/PresentationMode";
+import { presentationStorageKey, readPresentationMode } from "./utils/presentation";
 import { supplierKey } from "./utils/supplierSettlement";
 import { ApiScreen } from "./screens/ApiScreen";
 import { PublicShareScreen } from "./screens/PublicShareScreen";
@@ -80,6 +82,14 @@ function getPartyNameKey(name) {
 }
 
 export default function App() {
+  const [presentation, setPresentation] = useState(readPresentationMode);
+  useEffect(() => {
+    const syncPresentation = (event) => {
+      if (event.key === presentationStorageKey) setPresentation(readPresentationMode());
+    };
+    window.addEventListener("storage", syncPresentation);
+    return () => window.removeEventListener("storage", syncPresentation);
+  }, []);
   const [shipments, setShipments] = useState([]);
 
   const [fxSettings, setFxSettings] = useState(() => {
@@ -3127,6 +3137,10 @@ function importLocalBackup(event) {
     return <Login onLogin={setUser} />;
   }
 
+  if (presentation) {
+    return <PresentationScreen config={presentation} ownerId={user.id} shipments={shipments} rate={activeFxRate} onExit={() => { setPresentation(null); setTab("shipments"); setGlobalSearch(""); setSelectedShipment(null); setIsEditing(false); }} />;
+  }
+
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -3190,6 +3204,7 @@ function importLocalBackup(event) {
               </div>
             )}
           </div>
+          {canSeeFinance && <PresentationSetup ownerId={user.id} customers={customers} shipments={shipments} rate={activeFxRate} onActivate={setPresentation} />}
           {canEditCore && <button onClick={() => setTab("booking")}>+ New Shipment</button>}
         </header>
 
