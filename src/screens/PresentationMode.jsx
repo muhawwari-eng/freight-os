@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { FinancialManagementScreen } from "./FinancialManagementScreen";
 import { FormField } from "../components/freightComponents";
 import { getShipmentFinancialLedger, money } from "../utils/freight";
 import { buildPresentationRows, presentationPinHash, presentationStorageKey } from "../utils/presentation";
@@ -62,13 +63,16 @@ export function PresentationScreen({ config, shipments, ownerId, rate, onExit })
   }
   return <main className="presentationWorkspace">
     <header className="presentationBanner"><div><strong>Presentation Mode Active</strong><p>{isSupplier ? config.supplier : config.mode === "customer" ? config.customer : "Partner"}</p></div><button type="button" className="ghostBtn" onClick={() => setUnlock(true)}>Exit Presentation</button></header>
-    <section className="presentationBody">
+    {isSupplier && <section className="presentationBody">
+      <FinancialManagementScreen hideSales shipments={config.ownerId === ownerId ? shipments : []} activeFxRate={rate} customers={[]} suppliers={[]} canManagePayments={false} />
+    </section>}
+    {!isSupplier && <section className="presentationBody">
       <div className="panelHead"><h2>Shipment Overview</h2><button type="button" className="ghostBtn" onClick={exportCsv}>Export CSV</button></div>
       <FormField label="Search"><input value={query} onChange={(event) => setQuery(event.target.value)} /></FormField>
       <div className="opsMetrics mt"><div><small>Shipments</small><b>{filtered.length}</b></div><div><small>{isSupplier ? "Purchases USD" : "Sales USD"}</small><b>{money(invoices.reduce((sum, item) => sum + item.total, 0))}</b></div><div><small>{isSupplier ? "Paid USD" : "Collected USD"}</small><b>{money(invoices.reduce((sum, item) => sum + item.paid, 0))}</b></div><div><small>Remaining USD</small><b>{money(invoices.reduce((sum, item) => sum + item.remaining, 0))}</b></div></div>
       <div className="tableWrap"><table><thead><tr>{["Shipment", isSupplier ? "Supplier" : "Customer", "Booking", "Route", "Status", "ETD", "ETA"].map((title) => <th key={title}>{title}</th>)}</tr></thead><tbody>{filtered.map((row) => <tr key={row.id}><td><button type="button" className="linkBtn" onClick={() => setSelected(row.id)}>{row.id}</button></td><td>{row.customer}</td><td>{row.booking}</td><td>{row.origin} - {row.destination}</td><td>{row.status}</td><td>{row.etd}</td><td>{row.eta}</td></tr>)}{!filtered.length && <tr><td colSpan="7">No shipments found.</td></tr>}</tbody></table></div>
       {current && <section className="mt"><div className="panelHead"><h3>{current.id} / {isSupplier ? "Purchase Invoices" : "Sales Invoices"}</h3><button type="button" className="ghostBtn" onClick={() => setSelected("")}>Close</button></div><div className="tableWrap"><table><thead><tr>{["Invoice", "Date", "Category", "Total USD", isSupplier ? "Paid USD" : "Collected USD", "Remaining USD"].map((title) => <th key={title}>{title}</th>)}</tr></thead><tbody>{current.invoices.map((invoice) => <tr key={invoice.id}><td>{invoice.number}</td><td>{invoice.date}</td><td>{invoice.category}</td><td>{money(invoice.total)}</td><td>{money(invoice.paid)}</td><td>{money(invoice.remaining)}</td></tr>)}</tbody></table></div></section>}
-    </section>
+    </section>}
     {unlock && <div className="presentationOverlay"><form className="presentationDialog" onSubmit={async (event) => {
       event.preventDefault(); setBusy(true);
       try {

@@ -132,7 +132,7 @@ function InvoiceTable({ title, rows, canManagePayments, onEdit, onDelete, onAppr
   );
 }
 
-export function FinancialManagementScreen({ saveSupplierSettlement, cancelSupplierSettlement, updateFinancialPayment, deletePayment, shipments, customers, suppliers, activeFxRate, canManagePayments, saveFinancialInvoice, deleteFinancialInvoice, approveFinancialInvoice, toggleFinancialClosed, addInvoicePayment, addAllocatedInvoicePayment, assignInvoicePayment }) {
+export function FinancialManagementScreen({ hideSales = false, saveSupplierSettlement, cancelSupplierSettlement, updateFinancialPayment, deletePayment, shipments, customers, suppliers, activeFxRate, canManagePayments, saveFinancialInvoice, deleteFinancialInvoice, approveFinancialInvoice, toggleFinancialClosed, addInvoicePayment, addAllocatedInvoicePayment, assignInvoicePayment }) {
   const [selectedShipmentId, setSelectedShipmentId] = useState("");
   const [shipmentPickerFilters, setShipmentPickerFilters] = useState({ query: "", month: "", status: "all", customer: "all", paymentStatus: "all" });
   const [invoiceForm, setInvoiceForm] = useState(() => newInvoiceForm(activeFxRate));
@@ -167,11 +167,14 @@ export function FinancialManagementScreen({ saveSupplierSettlement, cancelSuppli
       const matchesMonth = !shipmentPickerFilters.month || shipmentMonth(item) === shipmentPickerFilters.month;
       const matchesStatus = shipmentPickerFilters.status === "all" || item.status === shipmentPickerFilters.status;
       const matchesCustomer = shipmentPickerFilters.customer === "all" || item.customer === shipmentPickerFilters.customer;
-      const paymentStatus = getShipmentPaymentStatus(item, activeFxRate);
+      const purchaseLedger = hideSales ? getShipmentFinancialLedger(item, activeFxRate) : null;
+      const paymentStatus = purchaseLedger
+        ? purchaseLedger.purchasesRemaining <= 0.01 ? "Fully Paid" : purchaseLedger.purchasesPaid > 0 ? "Partially Paid" : "Unpaid"
+        : getShipmentPaymentStatus(item, activeFxRate);
       const matchesPayment = shipmentPickerFilters.paymentStatus === "all" || paymentStatus === shipmentPickerFilters.paymentStatus;
       return matchesText && matchesMonth && matchesStatus && matchesCustomer && matchesPayment;
     });
-  }, [activeFxRate, shipmentPickerFilters, sortedShipmentOptions]);
+  }, [activeFxRate, hideSales, shipmentPickerFilters, sortedShipmentOptions]);
   const selectedShipmentVisible = filteredShipmentOptions.some((item) => item.id === selectedShipmentId);
   const shipmentId = selectedShipmentVisible ? selectedShipmentId : filteredShipmentOptions[0]?.id || "";
   const shipment = shipments.find((item) => item.id === shipmentId);
@@ -349,7 +352,7 @@ export function FinancialManagementScreen({ saveSupplierSettlement, cancelSuppli
           <h2>Financial Management</h2>
           <p className="smallText">Invoices, payments, and shipment profitability in one financial file.</p>
         </div>
-        {shipment && (
+        {shipment && !hideSales && (
           <div className="actions">
             <button className="ghostBtn" type="button" onClick={() => generateProfitReportPdf(shipment, activeFxRate)}>Profit Report PDF</button>
             <button className="saveBtn" type="button" onClick={() => generateInvoicePdf(shipment, activeFxRate)}>Customer Invoice PDF</button>
@@ -410,10 +413,11 @@ export function FinancialManagementScreen({ saveSupplierSettlement, cancelSuppli
           </div>
 
           <div className="financeMetrics">
-            <div className="financeMetric"><small>Sales Invoices</small><b>{money(ledger.salesTotal)}</b><span>Remaining {money(ledger.salesRemaining)}</span></div>
+            {!hideSales && <div className="financeMetric"><small>Sales Invoices</small><b>{money(ledger.salesTotal)}</b><span>Remaining {money(ledger.salesRemaining)}</span></div>}
             <div className="financeMetric"><small>Purchase Invoices</small><b>{money(ledger.purchasesTotal)}</b><span>Remaining {money(ledger.purchasesRemaining)}</span></div>
-            <div className="financeMetric profit"><small>Expected Profit</small><b>{money(ledger.expectedProfit)}</b><span>Sales minus purchases</span></div>
-            <div className="financeMetric cash"><small>Cash Position</small><b>{money(ledger.cashPosition)}</b><span>In {money(ledger.cashIn)} / Out {money(ledger.cashOut)}</span></div>
+            {hideSales && <><div className="financeMetric"><small>Paid to Suppliers</small><b>{money(ledger.purchasesPaid)}</b></div><div className="financeMetric"><small>Remaining Payable</small><b>{money(ledger.purchasesRemaining)}</b></div></>}
+            {!hideSales && <div className="financeMetric profit"><small>Expected Profit</small><b>{money(ledger.expectedProfit)}</b><span>Sales minus purchases</span></div>}
+            {!hideSales && <div className="financeMetric cash"><small>Cash Position</small><b>{money(ledger.cashPosition)}</b><span>In {money(ledger.cashIn)} / Out {money(ledger.cashOut)}</span></div>}
           </div>
 
           <div className="financeForms">
@@ -428,11 +432,21 @@ export function FinancialManagementScreen({ saveSupplierSettlement, cancelSuppli
             )}
           </div>
 
-          <InvoiceTable title="Sales Invoices" rows={ledger.saleRows} canManagePayments={canManagePayments} onEdit={startEditInvoice} onDelete={(id) => deleteFinancialInvoice(shipment.id, id)} onApprove={(id) => approveFinancialInvoice(shipment.id, id)} onReceipt={(payment) => generateReceiptPdf(shipment, payment, activeFxRate)} />
+          {!hideSales && <InvoiceTable title="Sales Invoices" rows={ledger.saleRows} canManagePayments={canManagePayments} onEdit={startEditInvoice} onDelete={(id) => deleteFinancialInvoice(shipment.id, id)} onApprove={(id) => approveFinancialInvoice(shipment.id, id)} onReceipt={(payment) => generateReceiptPdf(shipment, payment, activeFxRate)} />}
           <InvoiceTable title="Purchase Invoices" rows={ledger.purchaseRows} canManagePayments={canManagePayments} onEdit={startEditInvoice} onDelete={(id) => deleteFinancialInvoice(shipment.id, id)} onApprove={(id) => approveFinancialInvoice(shipment.id, id)} />
-          <PaymentRecords key={shipment.id} shipment={shipment} activeFxRate={activeFxRate} canManagePayments={canManagePayments} onSave={updateFinancialPayment} onDelete={deletePayment} />
+          {hideSales && <div className="financeLedger">
+            <h3>Supplier Payments</h3>
+            <div className="tableWrap"><table>
+              <thead><tr><th>Invoice</th><th>Party</th><th>Date</th><th>Applied USD</th></tr></thead>
+              <tbody>{ledger.purchaseRows.flatMap((invoice) => invoice.payments.map((payment) => <tr key={invoice.id + "-" + payment.id}>
+                <td>{invoice.invoiceNo}</td><td>{invoice.party}</td><td>{payment.paidDate}</td>
+                <td>{money(payment.appliedAmountUsd ?? paymentAmountUsd(payment, shipment, activeFxRate))}</td>
+              </tr>))}</tbody>
+            </table></div>
+          </div>}
+          {!hideSales && <PaymentRecords key={shipment.id} shipment={shipment} activeFxRate={activeFxRate} canManagePayments={canManagePayments} onSave={updateFinancialPayment} onDelete={deletePayment} />}
 
-          {ledger.unallocatedPayments.length > 0 && (
+          {!hideSales && ledger.unallocatedPayments.length > 0 && (
             <div className="financeLedger">
               <h3>Unallocated Payments</h3>
               <div className="miniList">
