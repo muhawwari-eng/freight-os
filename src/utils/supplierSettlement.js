@@ -4,8 +4,9 @@ export function supplierKey(value) {
   return String(value || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("tr");
 }
 
-export function supplierOpenInvoices(shipments, rate, party) {
-  return shipments.flatMap((shipment) => getShipmentFinancialLedger(shipment, rate).purchaseRows
+export function supplierOpenInvoices(shipments, rate, party, incoming = false) {
+  return shipments.flatMap((shipment) => getShipmentFinancialLedger(shipment, rate)[incoming ? "saleRows" : "purchaseRows"]
+    .map((invoice) => ({ ...invoice, party: invoice.party || (incoming ? shipment.customer : "") }))
     .filter((invoice) => invoice.remainingUsd > 0.01 && (!party || supplierKey(invoice.party) === supplierKey(party)))
     .map((invoice) => ({ shipment, invoice, key: JSON.stringify([shipment.id, invoice.id]) })))
     .sort((a, b) => String(a.invoice.invoiceDate || a.shipment.entryDate || "").localeCompare(String(b.invoice.invoiceDate || b.shipment.entryDate || "")) || a.key.localeCompare(b.key));

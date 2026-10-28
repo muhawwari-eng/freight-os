@@ -7,7 +7,7 @@ export function generateSupplierSettlementPdf(batch) {
   const doc = new jsPDF();
   const payment = batch.payment;
   doc.setFontSize(16);
-  doc.text("Supplier Payment Voucher", 14, 18);
+  doc.text(payment.settlementKind === "customer" ? "Customer Collection Receipt" : "Supplier Payment Voucher", 14, 18);
   doc.setFontSize(10);
   doc.text([batch.id, payment.company, payment.paidDate, payment.method || "", payment.note || ""], 14, 28);
   autoTable(doc, {

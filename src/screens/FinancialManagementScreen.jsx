@@ -361,6 +361,7 @@ export function FinancialManagementScreen({ hideSales = false, saveSupplierSettl
       </div>
 
       {canManagePayments && <SupplierSettlement shipments={shipments} activeFxRate={activeFxRate} onSave={saveSupplierSettlement} onCancel={cancelSupplierSettlement} />}
+      {canManagePayments && !hideSales && <SupplierSettlement incoming shipments={shipments} activeFxRate={activeFxRate} onSave={saveSupplierSettlement} onCancel={cancelSupplierSettlement} />}
       <div className="financeShipmentPicker">
         <div className="financePickerFilters">
           <FormField label="Search File"><input value={shipmentPickerFilters.query} onChange={(event) => updateShipmentPickerFilter("query", event.target.value)} placeholder="Shipment, customer, booking, route..." /></FormField>

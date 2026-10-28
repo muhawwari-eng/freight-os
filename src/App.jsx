@@ -2565,7 +2565,7 @@ function addShipmentFromForm(e) {
     if (updatedSelected) setSelectedShipment(updatedSelected);
   }
 
-  function saveSupplierSettlement(party, form, plan) {
+  function saveSupplierSettlement(party, form, plan, incoming = false) {
     if (!canManagePayments) return false;
     const rate = form.currency === "USD" ? 1 : Number(form.fxRate);
     const totalUsd = Number(form.amount) / rate;
@@ -2574,28 +2574,28 @@ function addShipmentFromForm(e) {
     const seen = new Set();
     for (const row of plan) {
       const shipment = shipments.find((item) => item.id === row.shipment.id);
-      const invoice = shipment && getShipmentFinancialLedger(shipment, activeFxRate).purchaseRows.find((item) => item.id === row.invoice.id);
+      const invoice = shipment && getShipmentFinancialLedger(shipment, activeFxRate)[incoming ? "saleRows" : "purchaseRows"].find((item) => item.id === row.invoice.id);
       const key = JSON.stringify([shipment?.id, invoice?.id]);
-      if (!shipment || shipment.financialClosed || !invoice || supplierKey(invoice.party) !== supplierKey(party) || !Number.isFinite(row.amountUsd) || row.amountUsd <= 0 || row.amountUsd > invoice.remainingUsd + 0.001 || seen.has(key)) {
+      if (!shipment || shipment.financialClosed || !invoice || supplierKey(invoice.party || (incoming ? shipment.customer : "")) !== supplierKey(party) || !Number.isFinite(row.amountUsd) || row.amountUsd <= 0 || row.amountUsd > invoice.remainingUsd + 0.001 || seen.has(key)) {
         alert("Invoice balances changed or a file is closed. Review the settlement again.");
         return false;
       }
       seen.add(key);
     }
-    const settlementId = "SET-" + crypto.randomUUID();
+    const settlementId = (incoming ? "COL-" : "SET-") + crypto.randomUUID();
     const update = (shipment) => {
       const rows = plan.filter((row) => row.shipment.id === shipment.id);
       if (!rows.length) return shipment;
       const amountUsd = rows.reduce((sum, row) => sum + row.amountUsd, 0);
       const payment = {
-        id: settlementId + "-" + shipment.id, settlementId, settlementAmountUsd: amountUsd,
+        id: settlementId + "-" + shipment.id, settlementId, settlementKind: incoming ? "customer" : "supplier", settlementAmountUsd: amountUsd,
         settlementInvoices: rows.map((row) => ({ invoiceId: row.invoice.id, invoiceNo: row.invoice.invoiceNo, amountUsd: row.amountUsd })),
         allocations: rows.map((row) => ({ invoiceId: row.invoice.id, amountUsd: row.amountUsd })),
-        purchaseType: "Supplier Settlement", company: party, amount: amountUsd * rate,
+        purchaseType: incoming ? "Customer Receipt" : "Supplier Settlement", company: party, amount: amountUsd * rate,
         currency: form.currency, fxRate: rate, paidDate: form.paidDate, method: form.method, note: form.note,
         createdAt: new Date().toISOString(), createdBy: user?.email || "unknown",
       };
-      return normalizeShipment(withTimeline({ ...shipment, payments: [payment, ...getPayments(shipment)] }, createTimelineEvent("Payment", "Supplier account settled", settlementId)));
+      return normalizeShipment(withTimeline({ ...shipment, payments: [payment, ...getPayments(shipment)] }, createTimelineEvent("Payment", incoming ? "Customer account collection" : "Supplier account settled", settlementId)));
     };
     setShipments((previous) => previous.map(update));
     if (selectedShipment) setSelectedShipment(update(selectedShipment));
@@ -2606,10 +2606,10 @@ function addShipmentFromForm(e) {
     if (!canManagePayments) return;
     const affected = shipments.filter((shipment) => getPayments(shipment).some((payment) => payment.settlementId === settlementId));
     if (affected.some((shipment) => shipment.financialClosed)) { alert("Reopen all affected financial files before cancelling this settlement."); return; }
-    if (!confirm("Cancel this entire supplier settlement and reopen its invoice balances?")) return;
+    if (!confirm("Cancel this entire account payment and reopen its invoice balances?")) return;
     const update = (shipment) => {
       if (!getPayments(shipment).some((payment) => payment.settlementId === settlementId)) return shipment;
-      return normalizeShipment(withTimeline({ ...shipment, payments: getPayments(shipment).filter((payment) => payment.settlementId !== settlementId) }, createTimelineEvent("Payment", "Supplier settlement cancelled", settlementId)));
+      return normalizeShipment(withTimeline({ ...shipment, payments: getPayments(shipment).filter((payment) => payment.settlementId !== settlementId) }, createTimelineEvent("Payment", "Account payment cancelled", settlementId)));
     };
     setShipments((previous) => previous.map(update));
     if (selectedShipment) setSelectedShipment(update(selectedShipment));
@@ -2619,7 +2619,7 @@ function addShipmentFromForm(e) {
     const shipment = shipments.find((item) => item.id === shipmentId);
     if (!canManagePayments || !shipment || shipment.financialClosed) return false;
     const original = getPayments(shipment).find((item) => item.id === paymentId);
-    if (original?.settlementId) { alert("Cancel the supplier settlement and record its corrected replacement from Supplier Account Settlement."); return false; }
+    if (original?.settlementId) { alert("Cancel this account payment from Customer Account Collection or Supplier Account Settlement, then record its corrected replacement."); return false; }
     const amount = Number(form.amount);
     const fxRate = Number(form.fxRate);
     if (!original || !Number.isFinite(amount) || amount <= 0 || !Number.isFinite(fxRate) || fxRate <= 0 || !form.paidDate) {
@@ -2912,7 +2912,7 @@ function addShipmentFromForm(e) {
 
   function deletePayment(shipmentId, paymentId) {
     if (getPayments(shipments.find((item) => item.id === shipmentId) || {}).some((payment) => payment.id === paymentId && payment.settlementId)) {
-      alert("Cancel this entire payment from Supplier Account Settlement.");
+      alert("Cancel this entire payment from Customer Account Collection or Supplier Account Settlement.");
       return;
     }
     if (shipments.find((item) => item.id === shipmentId)?.financialClosed) {
