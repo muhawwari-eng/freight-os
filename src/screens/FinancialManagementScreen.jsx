@@ -3,11 +3,11 @@ import { SupplierSettlement } from "./SupplierSettlement";
 import { FormField } from "../components/freightComponents";
 import { emptyFinancialInvoiceForm, emptyFinancialPaymentForm, getLocalTodayDateKey } from "../data/defaults";
 import { generateInvoicePdf, generateProfitReportPdf, generateReceiptPdf } from "../services/pdf";
-import { getNextFinancialInvoiceNumber, getPayments, getShipmentFinancialLedger, getShipmentPaymentStatus, money, paymentAmountUsd } from "../utils/freight";
+import { getNextFinancialInvoiceNumber, isAirShipment, getPayments, getShipmentFinancialLedger, getShipmentPaymentStatus, money, paymentAmountUsd } from "../utils/freight";
 
 const expenseCategories = ["Demurage", "Bill of Lading", "Storage", "Port Charges", "Lashing"];
 const saleCategories = ["Freight Sale", ...expenseCategories, "Other Income"];
-const purchaseCategories = ["Ocean Freight", "Local Transport", "Expense", ...expenseCategories, "Other"];
+const purchaseCategories = ["Ocean Freight", "Air Freight", "Local Transport", "Expense", ...expenseCategories, "Other"];
 
 function PaymentRecords({ shipment, activeFxRate, canManagePayments, onSave, onDelete }) {
   const [draft, setDraft] = useState(null);
@@ -188,6 +188,7 @@ export function FinancialManagementScreen({ hideSales = false, saveSupplierSettl
     : suppliers.filter((supplier) => {
       if (invoiceForm.category === "Local Transport") return supplier.type === "Local Transport";
       if (invoiceForm.category === "Ocean Freight") return supplier.type === "Shipping Line";
+      if (invoiceForm.category === "Air Freight") return supplier.type === "Airline";
       return true;
     });
   const selectableParties = invoiceForm.party && !partyOptions.some((party) => party.name === invoiceForm.party)
@@ -201,7 +202,7 @@ export function FinancialManagementScreen({ hideSales = false, saveSupplierSettl
       return {
         ...previous,
         invoiceType: value,
-        category: value === "Sale" ? "Freight Sale" : "Ocean Freight",
+        category: value === "Sale" ? "Freight Sale" : isAirShipment(shipment) ? "Air Freight" : "Ocean Freight",
         party: value === "Sale" ? shipment?.customer || "" : "",
       };
     });
